@@ -1,46 +1,82 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
+import AuthShell from "./pages/auth/AuthShell.jsx";
+import PrivateDashboard from "./pages/private/PrivateDashboard.jsx";
 import Customers from "./pages/Customers.jsx";
 import Transactions from "./pages/Transactions.jsx";
 
+import KycForm from "./pages/business/KycForm.jsx";
+import PendingVerification from "./pages/business/PendingVerification.jsx";
+import BusinessDashboard from "./pages/business/BusinessDashboard.jsx";
+
+function RequireAuth({ children }) {
+  const token = localStorage.getItem("access_token");
+  return token ? children : <Navigate to="/auth" replace />;
+}
+
 function App() {
-  const [backendStatus, setBackendStatus] = useState("Checking backend...");
-
-  useEffect(() => {
-    axios
-      .get("http://127.0.0.1:8000/api/customers/")
-      .then((res) => {
-        setBackendStatus("Backend Connected ✔");
-      })
-      .catch(() => {
-        setBackendStatus("Backend Not Reachable ✘");
-      });
-  }, []);
-
   return (
     <BrowserRouter>
-      <div style={{ padding: "20px", textAlign: "center" }}>
-        <h1>Udharo Guru</h1>
-        <h3>{backendStatus}</h3>
+      <Routes>
+        <Route path="/" element={<Navigate to="/auth" replace />} />
 
-        <nav style={{ marginTop: "20px" }}>
-          <Link to="/customers" style={{ marginRight: "15px" }}>
-            Customers
-          </Link>
-          <Link to="/transactions" style={{ marginRight: "15px" }}>
-            Transactions
-          </Link>
-        </nav>
+        {/* AUTH */}
+        <Route path="/auth" element={<AuthShell />} />
 
-        <div style={{ marginTop: "40px" }}>
-          <Routes>
-            <Route path="/customers" element={<Customers />} />
-            <Route path="/transactions" element={<Transactions />} />
-          </Routes>
-        </div>
-      </div>
+        {/* PRIVATE ACCOUNT */}
+        <Route
+          path="/private/dashboard"
+          element={
+            <RequireAuth>
+              <PrivateDashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/customers"
+          element={
+            <RequireAuth>
+              <Customers />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/transactions"
+          element={
+            <RequireAuth>
+              <Transactions />
+            </RequireAuth>
+          }
+        />
+
+        {/* BUSINESS ACCOUNT */}
+        <Route
+          path="/business/kyc"
+          element={
+            <RequireAuth>
+              <KycForm />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/business/pending"
+          element={
+            <RequireAuth>
+              <PendingVerification />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/business/dashboard"
+          element={
+            <RequireAuth>
+              <BusinessDashboard />
+            </RequireAuth>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/auth" replace />} />
+      </Routes>
     </BrowserRouter>
   );
 }

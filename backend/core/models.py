@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-
+from django.core.exceptions import ValidationError
 User = get_user_model()
 
 
@@ -24,7 +24,6 @@ class Customer(models.Model):
 
     def __str__(self):
         return self.name
-
 
 class Transaction(models.Model):
     CREDIT = "CREDIT"
@@ -64,6 +63,10 @@ class Transaction(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def clean(self):
+        if self.amount <= 0:
+            raise ValidationError("Transaction amount must be greater than zero.")
 
     def __str__(self):
         return f"{self.transaction_type} {self.amount} for {self.customer.name}"
