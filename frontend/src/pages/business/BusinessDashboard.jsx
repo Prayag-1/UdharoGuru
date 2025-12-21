@@ -1,4 +1,4 @@
-const verified = localStorage.getItem("kyc_status") === "verified";
+import { useAuth } from "../../context/AuthContext";
 
 const features = [
   { name: "OCR Upload", desc: "Scan receipts and extract udharo automatically." },
@@ -10,6 +10,9 @@ const features = [
 ];
 
 export default function BusinessDashboard() {
+  const { user } = useAuth();
+  const verified = user?.kyc_status === "APPROVED";
+
   return (
     <div
       style={{
@@ -26,7 +29,7 @@ export default function BusinessDashboard() {
         <p style={{ color: "rgba(255,255,255,0.7)", marginTop: 6 }}>
           {verified
             ? "Verified business account. All advanced features are unlocked."
-            : "Business verification pending. Complete KYC to unlock advanced features."}
+            : "Business verification pending. Your admin team can approve KYC to unlock advanced features."}
         </p>
 
         <div

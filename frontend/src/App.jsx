@@ -1,83 +1,143 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import AuthShell from "./pages/auth/AuthShell.jsx";
-import PrivateDashboard from "./pages/private/PrivateDashboard.jsx";
-import Customers from "./pages/Customers.jsx";
-import Transactions from "./pages/Transactions.jsx";
-
+import { AuthProvider, resolveHomeRoute, useAuth } from "./context/AuthContext";
+import Login from "./pages/auth/Login.jsx";
+import Signup from "./pages/auth/Signup.jsx";
+import BusinessDashboard from "./pages/business/BusinessDashboard.jsx";
 import KycForm from "./pages/business/KycForm.jsx";
 import PendingVerification from "./pages/business/PendingVerification.jsx";
-import BusinessDashboard from "./pages/business/BusinessDashboard.jsx";
+import Customers from "./pages/Customers.jsx";
+import PrivateDashboard from "./pages/private/PrivateDashboard.jsx";
+import Transactions from "./pages/Transactions.jsx";
 
-function RequireAuth({ children }) {
-  const token = localStorage.getItem("access_token");
-  return token ? children : <Navigate to="/auth" replace />;
-}
+const LoadingScreen = () => (
+  <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "Inter, system-ui" }}>
+    Loading...
+  </div>
+);
+
+const ProtectedRoute = ({ children, allow }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/auth" replace />;
+
+  if (allow) {
+    const decision = allow(user);
+    if (decision !== true) {
+      return <Navigate to={decision} replace />;
+    }
+  }
+
+  return children;
+};
+
+const AuthRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  return user ? <Navigate to={resolveHomeRoute(user)} replace /> : children;
+};
+
+const HomeRedirect = () => {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  return <Navigate to={resolveHomeRoute(user)} replace />;
+};
+
+const ensurePrivate = (user) =>
+  user.account_type === "PRIVATE" ? true : resolveHomeRoute(user);
+
+const ensureBusiness = (user) =>
+  user.account_type === "BUSINESS" ? true : resolveHomeRoute(user);
+
+const ensureBusinessApproved = (user) => {
+  if (user.account_type !== "BUSINESS") return resolveHomeRoute(user);
+  return user.kyc_status === "APPROVED" ? true : "/business/kyc";
+};
+
+const ensureBusinessPending = (user) => {
+  if (user.account_type !== "BUSINESS") return resolveHomeRoute(user);
+  return user.kyc_status === "APPROVED" ? "/business/dashboard" : true;
+};
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/auth" replace />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<HomeRedirect />} />
+          <Route path="/auth" element={<Navigate to="/auth/login" replace />} />
+          <Route
+            path="/auth/login"
+            element={
+              <AuthRoute>
+                <Login />
+              </AuthRoute>
+            }
+          />
+          <Route
+            path="/auth/signup"
+            element={
+              <AuthRoute>
+                <Signup />
+              </AuthRoute>
+            }
+          />
+          
+          <Route
+            path="/private/dashboard"
+            element={
+              <ProtectedRoute allow={ensurePrivate}>
+                <PrivateDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/customers"
+            element={
+              <ProtectedRoute>
+                <Customers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/transactions"
+            element={
+              <ProtectedRoute>
+                <Transactions />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* AUTH */}
-        <Route path="/auth" element={<AuthShell />} />
+          <Route
+            path="/business/kyc"
+            element={
+              <ProtectedRoute allow={ensureBusinessPending}>
+                <KycForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/business/pending"
+            element={
+              <ProtectedRoute allow={ensureBusinessPending}>
+                <PendingVerification />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/business/dashboard"
+            element={
+              <ProtectedRoute allow={ensureBusinessApproved}>
+                <BusinessDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* PRIVATE ACCOUNT */}
-        <Route
-          path="/private/dashboard"
-          element={
-            <RequireAuth>
-              <PrivateDashboard />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/customers"
-          element={
-            <RequireAuth>
-              <Customers />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/transactions"
-          element={
-            <RequireAuth>
-              <Transactions />
-            </RequireAuth>
-          }
-        />
-
-        {/* BUSINESS ACCOUNT */}
-        <Route
-          path="/business/kyc"
-          element={
-            <RequireAuth>
-              <KycForm />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/business/pending"
-          element={
-            <RequireAuth>
-              <PendingVerification />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/business/dashboard"
-          element={
-            <RequireAuth>
-              <BusinessDashboard />
-            </RequireAuth>
-          }
-        />
-
-        <Route path="*" element={<Navigate to="/auth" replace />} />
-      </Routes>
-    </BrowserRouter>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

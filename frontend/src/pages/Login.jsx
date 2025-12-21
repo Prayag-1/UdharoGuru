@@ -1,22 +1,23 @@
 import { useState } from "react";
-import { login } from "../api/auth";
 import { useNavigate } from "react-router-dom";
+
+import { resolveHomeRoute, useAuth } from "../context/AuthContext";
 
 const Login = () => {
   const [form, setForm] = useState({
-    username: "",
+    email: "",
     password: "",
   });
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
     try {
-      const res = await login(form);
-      localStorage.setItem("access_token", res.data.access);
-      localStorage.setItem("refresh_token", res.data.refresh);
-      navigate("/customers");
+      const profile = await login(form);
+      navigate(resolveHomeRoute(profile));
     } catch (err) {
       setError("Invalid credentials");
     }
@@ -30,11 +31,10 @@ const Login = () => {
 
       <form onSubmit={handleSubmit}>
         <input
-          placeholder="Username"
-          value={form.username}
-          onChange={(e) =>
-            setForm({ ...form, username: e.target.value })
-          }
+          placeholder="Email"
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
           style={{ width: "100%", padding: 10, marginBottom: 10 }}
         />
 
@@ -42,9 +42,7 @@ const Login = () => {
           type="password"
           placeholder="Password"
           value={form.password}
-          onChange={(e) =>
-            setForm({ ...form, password: e.target.value })
-          }
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
           style={{ width: "100%", padding: 10, marginBottom: 10 }}
         />
 
