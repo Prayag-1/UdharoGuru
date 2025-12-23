@@ -1,29 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import AuthLayout from "./AuthLayout";
+import "./Signup.css";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 
-const inputStyle = {
-  width: "100%",
-  padding: "12px 12px",
-  borderRadius: 10,
-  border: "1px solid #cbd5e1",
-  background: "#f8fafc",
-  color: "#0f172a",
-  outline: "none",
-};
-
-const btnStyle = {
-  width: "100%",
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "none",
-  background: "#2563eb",
-  color: "#fff",
-  fontWeight: 800,
-  cursor: "pointer",
-};
+const features = [
+  {
+    title: "Real-time tracking",
+    description: "Monitor every credit entry, repayment, and reminder in one view.",
+  },
+  {
+    title: "In-built OCR System",
+    description: "Upload bills and receipts to automatically extract and organize udharo entries.",
+  },
+  {
+    title: "Instant updates",
+    description: "Notify clients instantly and keep your books automatically in sync.",
+  },
+];
 
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -58,50 +52,95 @@ export default function Login() {
   };
 
   return (
-    <AuthLayout
-      title="Login to Udharo Guru"
-      subtitle="Use your email and password to access your workspace."
-      footer={
-        <>
-          New here? <Link to="/auth/signup" style={{ color: "#2563eb", fontWeight: 700 }}>Create an account</Link>
-        </>
-      }
-    >
-      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-        {status && (
-          <div style={{ padding: 12, borderRadius: 10, background: "#ecfdf3", border: "1px solid #bbf7d0", color: "#15803d", fontWeight: 700 }}>
-            {status}
+    <div className="signup-page">
+      <div className="signup-card">
+        <section className="signup-hero">
+          <div className="hero-pill">
+            <span className="dot" />
+            Smart Ledger Management
           </div>
-        )}
-        <div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 6, fontWeight: 700 }}>Email</div>
-          <input
-            style={inputStyle}
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="you@example.com"
-            required
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 6, fontWeight: 700 }}>Password</div>
-          <input
-            style={inputStyle}
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder="Enter password"
-            required
-          />
-        </div>
+          <h1>
+            Welcome to <span>UdharoGuru</span>
+          </h1>
+          <p className="hero-lede">
+            Manage dues, repayments, and customer reminders in one secure platform built for modern
+            businesses.
+          </p>
 
-        <button style={{ ...btnStyle, opacity: submitting ? 0.7 : 1 }} type="submit" disabled={submitting}>
-          {submitting ? "Processing..." : "Login"}
-        </button>
+          <div className="feature-grid">
+            {features.map((item) => (
+              <div key={item.title} className="feature-card">
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-        {error && <div style={{ color: "#b91c1c", fontWeight: 800 }}>{error}</div>}
-      </form>
-    </AuthLayout>
+        <section className="signup-form-panel">
+          <div className="hero-pill pill-light">
+            <span className="dot dot-light" />
+            UdharoGuru -Your Trusted Credit Management Partner
+          </div>
+          <h2>Sign in to continue</h2>
+          <p className="form-lede">
+            Access your dashboard, send reminders, and keep your books accurate every day.
+          </p>
+
+          <form onSubmit={handleSubmit} className="signup-form">
+            {status && (
+              <div className="form-status">
+                {status}
+              </div>
+            )}
+
+            <label className="field">
+              <span>Email *</span>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="you@example.com"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Password *</span>
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="Enter password"
+                required
+              />
+            </label>
+
+            <div className="form-meta">
+              <label className="checkbox">
+                <input type="checkbox" />
+                <span>Keep me signed in</span>
+              </label>
+              <Link to="#" className="link-quiet">
+                Forgot password?
+              </Link>
+            </div>
+
+            <button className="primary-btn" type="submit" disabled={submitting}>
+              {submitting ? "Processing..." : "Sign in"}
+            </button>
+
+            {error && <div className="form-error">{error}</div>}
+          </form>
+
+          <p className="switch-auth">
+            New here?{" "}
+            <Link to="/auth/signup" className="link-quiet">
+              Create an account
+            </Link>
+          </p>
+        </section>
+      </div>
+    </div>
   );
 }
