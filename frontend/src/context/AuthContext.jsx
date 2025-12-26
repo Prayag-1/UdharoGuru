@@ -17,9 +17,12 @@ export const resolveHomeRoute = (user) => {
   if (!user) return "/auth";
   if (user.account_type === "PRIVATE") return "/private/dashboard";
   if (user.account_type === "BUSINESS") {
-    return user.kyc_status === "APPROVED"
-      ? "/business/dashboard"
-      : "/business/kyc";
+    const status = user.business_status;
+    if (status === "APPROVED") return "/business/dashboard";
+    if (status === "KYC_SUBMITTED") return "/business/pending";
+    if (status === "PAYMENT_SUBMITTED") return "/business/kyc";
+    if (status === "REJECTED") return "/business/rejected";
+    return "/business/payment";
   }
   return "/auth";
 };

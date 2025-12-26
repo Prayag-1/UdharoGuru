@@ -5,7 +5,14 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .serializers import RegisterSerializer, SimpleTokenObtainPairSerializer, UserSerializer
+from .models import BusinessKYC, BusinessPayment
+from .serializers import (
+    BusinessKYCSerializer,
+    BusinessPaymentSerializer,
+    RegisterSerializer,
+    SimpleTokenObtainPairSerializer,
+    UserSerializer,
+)
 
 
 class RegisterView(APIView):
@@ -37,3 +44,78 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data, status=status.HTTP_200_OK)
+
+
+class BusinessOnlyMixin:
+    def _ensure_business(self, request):
+        user = request.user
+        if user.account_type != "BUSINESS":
+            return Response({"detail": "Business account required."}, status=status.HTTP_403_FORBIDDEN)
+        return None
+
+
+class BusinessPaymentSubmitView(BusinessOnlyMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        forbidden = self._ensure_business(request)
+        if forbidden:
+            return forbidden
+
+        try:
+            instance = BusinessPayment.objects.get(user=request.user)
+        except BusinessPayment.DoesNotExist:
+            instance = None
+
+        serializer = BusinessPaymentSerializer(instance=instance, data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save()
+
+        request.user.business_status = "PAYMENT_SUBMITTED"
+        request.user.save(update_fields=["business_status"])
+
+        return Response(BusinessPaymentSerializer(payment).data, status=status.HTTP_200_OK)
+
+
+class BusinessKYCSubmitView(BusinessOnlyMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        forbidden = self._ensure_business(request)
+        if forbidden:
+            return forbidden
+
+        try:
+            instance = BusinessKYC.objects.get(user=request.user)
+        except BusinessKYC.DoesNotExist:
+            instance = None
+
+        serializer = BusinessKYCSerializer(instance=instance, data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        kyc = serializer.save()
+
+        request.user.business_status = "KYC_SUBMITTED"
+        request.user.save(update_fields=["business_status"])
+
+        return Response(BusinessKYCSerializer(kyc).data, status=status.HTTP_200_OK)
+
+
+class BusinessStatusView(BusinessOnlyMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        forbidden = self._ensure_business(request)
+        if forbidden:
+            return forbidden
+
+        payment = getattr(request.user, "business_payment", None)
+        kyc = getattr(request.user, "business_kyc", None)
+
+        return Response(
+            {
+                "business_status": request.user.business_status,
+                "payment": {"is_verified": bool(getattr(payment, "is_verified", False))} if payment else None,
+                "kyc": {"is_approved": bool(getattr(kyc, "is_approved", False))} if kyc else None,
+            },
+            status=status.HTTP_200_OK,
+        )

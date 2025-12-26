@@ -1,48 +1,90 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useAuth } from "../../context/AuthContext";
+import { submitBusinessKyc } from "../../api/business";
+import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
+import { useBusinessGate } from "../../hooks/useBusinessGate";
 
-const labelStyle = { fontSize: 12, color: "#475569", marginBottom: 6, fontWeight: 700 };
 const inputStyle = {
-  width: "100%",
-  padding: "12px 12px",
-  borderRadius: 10,
-  border: "1px solid #cbd5e1",
-  background: "#f8fafc",
-  color: "#0f172a",
-  outline: "none",
+  border: "1px solid #d7def0",
+  borderRadius: 12,
+  padding: "13px 14px",
+  fontSize: 15,
+  fontFamily: "Inter, system-ui",
+  background: "#f9fbff",
 };
-const selectStyle = { ...inputStyle };
 
-const initial = {
-  first_name: "",
-  last_name: "",
-  gender: "",
-  dob: "",
-  country: "",
-  city: "",
-  address: "",
-  business_name: "",
-  registration: "",
-  industry: "",
-  website: "",
-  phone: "",
-  id_type: "",
-  id_number: "",
-  proof_file: null,
+const labelStyle = {
+  display: "grid",
+  gap: 6,
+  fontWeight: 700,
+  color: "#1d2d4a",
 };
+
+const gridTwo = { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" };
 
 export default function KycForm() {
   const navigate = useNavigate();
   const { user, setUserState } = useAuth();
+  const { loading } = useBusinessGate("/business/kyc");
   const [form, setForm] = useState({
-    ...initial,
     first_name: user?.full_name?.split(" ")?.[0] || "",
     last_name: user?.full_name?.split(" ")?.slice(1).join(" ") || "",
+    gender: "",
+    dob: "",
+    country: "",
+    city: "",
+    phone: "",
+    address: "",
+    business_name: "",
+    registration_pan: "",
+    industry: "",
+    website: "",
+    identity_type: "",
+    identity_number: "",
+    identity_document: null,
+    payment_transaction_code: "",
+    payment_screenshot: null,
   });
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [previewId, setPreviewId] = useState("");
+  const [previewPay, setPreviewPay] = useState("");
+
+  useEffect(() => {
+    if (!user) return;
+    if (user.account_type !== "BUSINESS") {
+      navigate(resolveHomeRoute(user), { replace: true });
+    }
+  }, [user, navigate]);
+
+  useEffect(() => {
+    if (!form.identity_document) {
+      setPreviewId("");
+    } else {
+      const url = URL.createObjectURL(form.identity_document);
+      setPreviewId(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [form.identity_document]);
+
+  useEffect(() => {
+    if (!form.payment_screenshot) {
+      setPreviewPay("");
+    } else {
+      const url = URL.createObjectURL(form.payment_screenshot);
+      setPreviewPay(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [form.payment_screenshot]);
+
+  const handleChange = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleFile = (key) => (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleChange(key, file);
+  };
 
   const isValid = useMemo(() => {
     return (
@@ -52,189 +94,263 @@ export default function KycForm() {
       form.dob &&
       form.country &&
       form.city &&
+      form.phone &&
       form.address &&
       form.business_name &&
-      form.registration &&
+      form.registration_pan &&
       form.industry &&
-      form.phone &&
-      form.id_type &&
-      form.id_number &&
-      form.proof_file
+      form.identity_type &&
+      form.identity_number &&
+      form.identity_document
     );
   }, [form]);
 
-  const handleChange = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
-
-  const handleFile = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleChange("proof_file", file);
-    }
+  const extractMessage = (err) => {
+    const data = err?.response?.data;
+    return (
+      data?.detail ||
+      data?.message ||
+      data?.non_field_errors?.[0] ||
+      data?.error ||
+      Object.values(data || {})?.[0]?.[0] ||
+      "Unable to submit KYC."
+    );
   };
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    if (!isValid) return;
+    if (!isValid || loading) return;
     setSubmitting(true);
-    setTimeout(() => {
-      setSuccess(true);
-      setUserState((prev) => (prev ? { ...prev, kyc_status: "APPROVED" } : prev));
-      navigate("/business/dashboard", { replace: true });
-    }, 800);
+    setError("");
+    setSuccess("");
+    try {
+      const payload = new FormData();
+      Object.entries(form).forEach(([key, value]) => {
+        if (value) payload.append(key, value);
+      });
+      await submitBusinessKyc(payload);
+      setSuccess("KYC submitted successfully. Redirecting to review screen...");
+      setUserState((prev) => (prev ? { ...prev, business_status: "KYC_SUBMITTED" } : prev));
+      setTimeout(() => navigate("/business/pending", { replace: true }), 700);
+    } catch (err) {
+      setError(extractMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        width: "100vw",
         display: "flex",
+        alignItems: "center",
         justifyContent: "center",
-        alignItems: "flex-start",
-        paddingTop: "40px",
-        background: "#e8f1ff",
+        padding: "32px 20px",
+        background:
+          "radial-gradient(circle at 20% 20%, rgba(99,141,255,0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(15,115,206,0.08), transparent 32%), linear-gradient(135deg, #f5f7ff 0%, #eef3ff 50%, #f8fbff 100%)",
         fontFamily: "Inter, system-ui",
       }}
     >
-      <div style={{ width: "100%", maxWidth: "900px" }}>
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: 16,
-            padding: 24,
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 16px 40px rgba(15,23,42,0.12)",
-          }}
-        >
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-              <span style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Business</span>
-              <span style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Secure Verification</span>
-            </div>
-            <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: "#0f172a" }}>Submit KYC for {user?.full_name || "your business"}</h1>
-            <div style={{ color: "#475569", marginTop: 6 }}>Identity verification ensures faster payouts and access to advanced workflows.</div>
+      <div
+        style={{
+          width: "min(1100px, 100%)",
+          background: "#ffffff",
+          borderRadius: 28,
+          overflow: "hidden",
+          boxShadow: "0 20px 60px rgba(26,55,117,0.18)",
+        }}
+      >
+        <div style={{ padding: "42px 40px 14px", borderBottom: "1px solid #e5e7eb" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ padding: "8px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#eef4ff", color: "#0f172a", fontWeight: 800, fontSize: 12 }}>Business</span>
+            <span style={{ padding: "8px 12px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", fontWeight: 800, fontSize: 12 }}>Secure Verification</span>
+          </div>
+          <h1 style={{ fontSize: 28, margin: "12px 0 6px", color: "#0f1f40" }}>Submit KYC for {user?.full_name || "your business"}</h1>
+          <p style={{ margin: 0, color: "#4b5b77", lineHeight: 1.6 }}>
+            Provide business and identity details to complete onboarding. Payment information can be reattached here for faster review.
+          </p>
+        </div>
+
+        <form onSubmit={submit} style={{ padding: "28px 40px 36px", display: "grid", gap: 18 }}>
+          <div style={{ ...gridTwo }}>
+            <label style={labelStyle}>
+              <span>First Name *</span>
+              <input style={inputStyle} value={form.first_name} onChange={(e) => handleChange("first_name", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Last Name *</span>
+              <input style={inputStyle} value={form.last_name} onChange={(e) => handleChange("last_name", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Gender *</span>
+              <select style={inputStyle} value={form.gender} onChange={(e) => handleChange("gender", e.target.value)} required>
+                <option value="">Select</option>
+                <option value="MALE">Male</option>
+                <option value="FEMALE">Female</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </label>
+            <label style={labelStyle}>
+              <span>Date of Birth *</span>
+              <input type="date" style={inputStyle} value={form.dob} onChange={(e) => handleChange("dob", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Country *</span>
+              <input style={inputStyle} value={form.country} onChange={(e) => handleChange("country", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>City *</span>
+              <input style={inputStyle} value={form.city} onChange={(e) => handleChange("city", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Phone *</span>
+              <input style={inputStyle} value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Residential Address *</span>
+              <input style={inputStyle} value={form.address} onChange={(e) => handleChange("address", e.target.value)} required />
+            </label>
           </div>
 
-          <form onSubmit={submit} style={{ display: "grid", gap: 16 }}>
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(1, minmax(0, 1fr))" }}>
-              <div>
-                <div style={labelStyle}>First Name</div>
-                <input style={inputStyle} value={form.first_name} onChange={(e) => handleChange("first_name", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Last Name</div>
-                <input style={inputStyle} value={form.last_name} onChange={(e) => handleChange("last_name", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Gender</div>
-                <select style={selectStyle} value={form.gender} onChange={(e) => handleChange("gender", e.target.value)} required>
-                  <option value="">Select</option>
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
-                  <option value="OTHER">Other</option>
-                </select>
-              </div>
-              <div>
-                <div style={labelStyle}>Date of Birth</div>
-                <input type="date" style={inputStyle} value={form.dob} onChange={(e) => handleChange("dob", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Country</div>
-                <input style={inputStyle} value={form.country} onChange={(e) => handleChange("country", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>City</div>
-                <input style={inputStyle} value={form.city} onChange={(e) => handleChange("city", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Phone</div>
-                <input style={inputStyle} value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Residential Address</div>
-                <input style={inputStyle} value={form.address} onChange={(e) => handleChange("address", e.target.value)} required />
-              </div>
-            </div>
+          <div style={{ ...gridTwo }}>
+            <label style={labelStyle}>
+              <span>Business Name *</span>
+              <input style={inputStyle} value={form.business_name} onChange={(e) => handleChange("business_name", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Registration / PAN *</span>
+              <input style={inputStyle} value={form.registration_pan} onChange={(e) => handleChange("registration_pan", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Industry *</span>
+              <input style={inputStyle} value={form.industry} onChange={(e) => handleChange("industry", e.target.value)} required />
+            </label>
+            <label style={labelStyle}>
+              <span>Website (optional)</span>
+              <input style={inputStyle} value={form.website} onChange={(e) => handleChange("website", e.target.value)} placeholder="https://yourbusiness.com" />
+            </label>
+            <label style={labelStyle}>
+              <span>Identity Type *</span>
+              <select style={inputStyle} value={form.identity_type} onChange={(e) => handleChange("identity_type", e.target.value)} required>
+                <option value="">Select</option>
+                <option value="NATIONAL_ID">National ID</option>
+                <option value="PASSPORT">Passport</option>
+                <option value="DRIVING_LICENSE">Driving License</option>
+              </select>
+            </label>
+            <label style={labelStyle}>
+              <span>Identity Number *</span>
+              <input style={inputStyle} value={form.identity_number} onChange={(e) => handleChange("identity_number", e.target.value)} required />
+            </label>
+          </div>
 
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(1, minmax(0, 1fr))" }}>
-              <div>
-                <div style={labelStyle}>Business Name</div>
-                <input style={inputStyle} value={form.business_name} onChange={(e) => handleChange("business_name", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Registration / PAN</div>
-                <input style={inputStyle} value={form.registration} onChange={(e) => handleChange("registration", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Industry</div>
-                <input style={inputStyle} value={form.industry} onChange={(e) => handleChange("industry", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Website (optional)</div>
-                <input style={inputStyle} value={form.website} onChange={(e) => handleChange("website", e.target.value)} placeholder="https://yourbusiness.com" />
-              </div>
-              <div>
-                <div style={labelStyle}>Identity Type</div>
-                <select style={selectStyle} value={form.id_type} onChange={(e) => handleChange("id_type", e.target.value)} required>
-                  <option value="">Select</option>
-                  <option value="NATIONAL_ID">National ID</option>
-                  <option value="PASSPORT">Passport</option>
-                  <option value="DRIVING_LICENSE">Driving License</option>
-                </select>
-              </div>
-              <div>
-                <div style={labelStyle}>Identity Number</div>
-                <input style={inputStyle} value={form.id_number} onChange={(e) => handleChange("id_number", e.target.value)} required />
-              </div>
-              <div>
-                <div style={labelStyle}>Proof of Identity</div>
-                <div style={{ border: "1px dashed #cbd5e1", borderRadius: 12, padding: 14, background: "#f8fafc", textAlign: "center", color: "#475569" }}>
-                  <div>Drag & drop identity document or click to upload</div>
-                  {form.proof_file && <div style={{ marginTop: 8, fontWeight: 800, color: "#0f172a" }}>{form.proof_file.name}</div>}
-                  <label style={{ marginTop: 10, padding: "10px 14px", borderRadius: 10, background: "#2563eb", color: "#fff", fontWeight: 800, cursor: "pointer", display: "inline-block" }}>
-                    Upload file
-                    <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={handleFile} />
-                  </label>
+          <div style={{ display: "grid", gap: 12 }}>
+            <label style={labelStyle}>
+              <span>Identity Document *</span>
+              <div
+                style={{
+                  border: "2px dashed #cbd5e1",
+                  borderRadius: 14,
+                  padding: "16px 14px",
+                  background: "#f8fbff",
+                  textAlign: "center",
+                  color: "#475569",
+                  cursor: "pointer",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontWeight: 800, color: "#0f172a" }}>Upload identity document</div>
+                <div style={{ fontSize: 13 }}>
+                  {form.identity_document ? form.identity_document.name : "PDF or image files allowed"}
                 </div>
+                {previewId && (
+                  <div style={{ width: 200, height: 200, margin: "0 auto", borderRadius: 14, overflow: "hidden", border: "1px solid #e2e8f0", background: "#fff" }}>
+                    <img src={previewId} alt="Identity preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                )}
+                <input type="file" accept="image/*,.pdf" style={{ display: "none" }} onChange={handleFile("identity_document")} />
               </div>
-            </div>
+            </label>
 
-            <div style={{ display: "grid", gap: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={labelStyle}>Final Review</div>
-                  <div style={{ color: "#475569" }}>All fields are mandatory. Ensure documents are clear and current.</div>
-                </div>
-                <span style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid rgba(37,99,235,0.25)", background: "rgba(37,99,235,0.08)", fontSize: 12, fontWeight: 700, color: "#2563eb" }}>
-                  Secure upload
-                </span>
-              </div>
-
-              <div style={{ marginTop: 8, display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", fontWeight: 800, cursor: "pointer" }}
-                  onClick={() => navigate(-1)}
+            <div style={{ ...gridTwo }}>
+              <label style={labelStyle}>
+                <span>Payment Transaction Code (optional)</span>
+                <input
+                  style={inputStyle}
+                  value={form.payment_transaction_code}
+                  onChange={(e) => handleChange("payment_transaction_code", e.target.value)}
+                  placeholder="If resubmitting payment proof"
+                />
+              </label>
+              <label style={labelStyle}>
+                <span>Payment Screenshot (optional)</span>
+                <div
+                  style={{
+                    border: "2px dashed #cbd5e1",
+                    borderRadius: 14,
+                    padding: "14px",
+                    background: "#f8fbff",
+                    textAlign: "center",
+                    color: "#475569",
+                    cursor: "pointer",
+                    display: "grid",
+                    gap: 8,
+                  }}
                 >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  style={{ padding: "12px 14px", borderRadius: 10, border: "none", background: "#2563eb", color: "#fff", fontWeight: 900, cursor: isValid && !submitting ? "pointer" : "not-allowed", opacity: isValid && !submitting ? 1 : 0.6 }}
-                  disabled={!isValid || submitting}
-                >
-                  {submitting ? "Submitting..." : "Submit KYC"}
-                </button>
-              </div>
-
-              {success && (
-                <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.25)", color: "#0f172a", fontWeight: 700 }}>
-                  KYC submitted. We’ve updated your account and you are being redirected to the Business Dashboard.
+                  <div style={{ fontWeight: 800, color: "#0f172a" }}>Upload payment screenshot</div>
+                  <div style={{ fontSize: 13 }}>
+                    {form.payment_screenshot ? form.payment_screenshot.name : "PNG, JPG, JPEG (optional)"}
+                  </div>
+                  {previewPay && (
+                    <div style={{ width: 180, height: 180, margin: "0 auto", borderRadius: 14, overflow: "hidden", border: "1px solid #e2e8f0", background: "#fff" }}>
+                      <img src={previewPay} alt="Payment preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    </div>
+                  )}
+                  <input type="file" accept="image/png,image/jpg,image/jpeg" style={{ display: "none" }} onChange={handleFile("payment_screenshot")} />
                 </div>
-              )}
+              </label>
             </div>
-          </form>
-        </div>
+          </div>
+
+            <div style={{ marginTop: 8, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", fontWeight: 800, cursor: "pointer" }}
+                onClick={() => navigate(-1)}
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: "#2563eb",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: isValid && !submitting ? "pointer" : "not-allowed",
+                  opacity: isValid && !submitting ? 1 : 0.6,
+                }}
+                disabled={!isValid || submitting}
+              >
+                {submitting ? "Submitting..." : "Submit KYC"}
+              </button>
+            </div>
+
+            {error && (
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: "#fff1f2", border: "1px solid #fecdd3", color: "#b91c1c", fontWeight: 700 }}>
+                {error}
+              </div>
+            )}
+            {success && (
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.25)", color: "#0f172a", fontWeight: 700 }}>
+                {success}
+              </div>
+            )}
+        </form>
       </div>
     </div>
   );

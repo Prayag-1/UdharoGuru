@@ -1,4 +1,5 @@
 import { useAuth } from "../../context/AuthContext";
+import { useBusinessGate } from "../../hooks/useBusinessGate";
 
 const features = [
   { name: "OCR Upload", desc: "Scan receipts and extract udharo automatically." },
@@ -11,7 +12,8 @@ const features = [
 
 export default function BusinessDashboard() {
   const { user } = useAuth();
-  const verified = user?.kyc_status === "APPROVED";
+  useBusinessGate("/business/dashboard");
+  const verified = user?.business_status === "APPROVED";
 
   return (
     <div
