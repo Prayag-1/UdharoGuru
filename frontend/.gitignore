@@ -27,8 +27,7 @@ backend/venv/
 __pycache__/
 *.pyc
 
-# Django
-backend/db.sqlite3
+
 
 # Node
 frontend/node_modules/
@@ -46,3 +45,12 @@ frontend/dist/
 # OS
 Thumbs.db
 .DS_Store
+
+# Django media uploads
+media/
+backend/media/
+uploads/
+backend/uploads/
+*.png
+*.jpg
+*.jpeg

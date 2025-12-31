@@ -1,27 +1,27 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { getBusinessStatus } from "../api/business";
 import { resolveHomeRoute, useAuth } from "../context/AuthContext";
 
 const targetForStatus = (status) => {
   switch (status) {
-    case "PENDING_PAYMENT":
-    default:
-      return "/business/payment";
-    case "PAYMENT_SUBMITTED":
-      return "/business/kyc";
-    case "KYC_SUBMITTED":
-      return "/business/pending";
     case "APPROVED":
       return "/business/dashboard";
     case "REJECTED":
       return "/business/rejected";
+    case "UNDER_REVIEW":
+    case "KYC_SUBMITTED":
+      return "/business/pending";
+    case "PAYMENT_SUBMITTED":
+      return "/business/kyc";
+    case "PENDING_PAYMENT":
+    default:
+      return "/business/payment";
   }
 };
 
 export const useBusinessGate = (currentPath) => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [data, setData] = useState({ business_status: null, payment: null, kyc: null, rejection_reason: null });
@@ -39,10 +39,18 @@ export const useBusinessGate = (currentPath) => {
         return;
       }
       try {
-        const { data: status } = await getBusinessStatus();
-        setData(status);
-        const target = targetForStatus(status.business_status);
-        if (target !== currentPath && location.pathname !== target) {
+        const profile = await refreshUser();
+        const target = targetForStatus(profile?.business_status);
+        if (profile) {
+          setData({
+            business_status: profile.business_status,
+            payment: null,
+            kyc: { is_approved: profile.kyc_status === "APPROVED" },
+            rejection_reason: null,
+            kyc_status: profile.kyc_status,
+          });
+        }
+        if (target && target !== currentPath && location.pathname !== target) {
           navigate(target, { replace: true });
         }
       } catch {
@@ -52,7 +60,7 @@ export const useBusinessGate = (currentPath) => {
       }
     };
     run();
-  }, [user, currentPath, navigate, location.pathname]);
+  }, [user, currentPath, navigate, location.pathname, refreshUser]);
 
   return { ...data, loading };
 };

@@ -9,6 +9,7 @@ from .models import BusinessKYC, BusinessPayment
 from .serializers import (
     BusinessKYCSerializer,
     BusinessPaymentSerializer,
+    MeSerializer,
     RegisterSerializer,
     SimpleTokenObtainPairSerializer,
     UserSerializer,
@@ -43,7 +44,8 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response(UserSerializer(request.user).data, status=status.HTTP_200_OK)
+        request.user.refresh_from_db()
+        return Response(MeSerializer(request.user).data, status=status.HTTP_200_OK)
 
 
 class BusinessOnlyMixin:
@@ -94,8 +96,9 @@ class BusinessKYCSubmitView(BusinessOnlyMixin, APIView):
         serializer.is_valid(raise_exception=True)
         kyc = serializer.save()
 
-        request.user.business_status = "KYC_SUBMITTED"
-        request.user.save(update_fields=["business_status"])
+        request.user.kyc_status = "PENDING"
+        request.user.business_status = "UNDER_REVIEW"
+        request.user.save(update_fields=["kyc_status", "business_status"])
 
         return Response(BusinessKYCSerializer(kyc).data, status=status.HTTP_200_OK)
 
@@ -108,14 +111,23 @@ class BusinessStatusView(BusinessOnlyMixin, APIView):
         if forbidden:
             return forbidden
 
+        request.user.refresh_from_db()
         payment = getattr(request.user, "business_payment", None)
         kyc = getattr(request.user, "business_kyc", None)
 
         return Response(
             {
                 "business_status": request.user.business_status,
+                "kyc_status": request.user.kyc_status,
                 "payment": {"is_verified": bool(getattr(payment, "is_verified", False))} if payment else None,
-                "kyc": {"is_approved": bool(getattr(kyc, "is_approved", False))} if kyc else None,
+                "kyc": {
+                    "is_approved": bool(getattr(kyc, "is_approved", False)),
+                    "rejection_reason": getattr(kyc, "rejection_reason", "") if kyc else "",
+                    "reviewed_at": getattr(kyc, "reviewed_at", None) if kyc else None,
+                    "reviewed_by": getattr(getattr(kyc, "reviewed_by", None), "id", None) if kyc else None,
+                }
+                if kyc
+                else None,
             },
             status=status.HTTP_200_OK,
         )

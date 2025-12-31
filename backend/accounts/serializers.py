@@ -1,8 +1,15 @@
 from django.db import IntegrityError
 from rest_framework import serializers
+from rest_framework.exceptions import APIException
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import BusinessKYC, BusinessPayment, User
+
+
+class ConflictError(APIException):
+    status_code = 409
+    default_detail = "Conflict"
+    default_code = "conflict"
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -29,7 +36,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         try:
             user = User.objects.create_user(password=password, **validated_data)
         except IntegrityError as exc:
-            raise serializers.ValidationError({"email": "Email already registered."}) from exc
+            # Surface as HTTP 409 to distinguish from other validation errors.
+            raise ConflictError({"email": ["Email already registered."]}) from exc
         return user
 
 
@@ -46,6 +54,20 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
         )
         read_only_fields = ("id", "kyc_status", "business_status", "date_joined")
+
+
+class MeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "email",
+            "full_name",
+            "account_type",
+            "kyc_status",
+            "business_status",
+        )
+        read_only_fields = fields
 
 
 class SimpleTokenObtainPairSerializer(TokenObtainPairSerializer):

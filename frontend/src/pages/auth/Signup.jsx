@@ -28,6 +28,7 @@ export default function Signup() {
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { register } = useAuth();
 
@@ -76,7 +77,7 @@ export default function Signup() {
         <section className="signup-form-panel">
           <div className="hero-pill pill-light">
             <span className="dot dot-light" />
-            UdharoGuru — Business Portal
+            UdharoGuru - Business Portal
           </div>
           <h2>Sign up to continue</h2>
           <p className="form-lede">
@@ -125,18 +126,22 @@ export default function Signup() {
             <label className="field">
               <span>Password *</span>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="••••••••••"
+                placeholder="Enter a strong password"
                 required
               />
             </label>
 
             <div className="form-meta">
               <label className="checkbox">
-                <input type="checkbox" />
-                <span>Keep me signed in</span>
+                <input
+                  type="checkbox"
+                  checked={showPassword}
+                  onChange={(e) => setShowPassword(e.target.checked)}
+                />
+                <span>Show password</span>
               </label>
               <Link to="#" className="link-quiet">
                 Forgot password?

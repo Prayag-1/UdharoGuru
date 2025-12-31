@@ -24,6 +24,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
@@ -108,7 +109,7 @@ export default function Login() {
             <label className="field">
               <span>Password *</span>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder="Enter password"
@@ -118,8 +119,12 @@ export default function Login() {
 
             <div className="form-meta">
               <label className="checkbox">
-                <input type="checkbox" />
-                <span>Keep me signed in</span>
+                <input
+                  type="checkbox"
+                  checked={showPassword}
+                  onChange={(e) => setShowPassword(e.target.checked)}
+                />
+                <span>Show password</span>
               </label>
               <Link to="#" className="link-quiet">
                 Forgot password?

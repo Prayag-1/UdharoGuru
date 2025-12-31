@@ -26,6 +26,7 @@ function App() {
           <Route path="/business/dashboard" element={<BusinessDashboard />} />
           <Route path="/business/payment" element={<Payment />} />
           <Route path="/business/kyc" element={<KycForm />} />
+          <Route path="/business/kyc/review" element={<KycForm />} />
           <Route path="/business/pending" element={<PendingVerification />} />
           <Route path="/business/rejected" element={<Rejected />} />
 

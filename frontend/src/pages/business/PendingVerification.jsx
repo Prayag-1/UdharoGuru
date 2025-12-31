@@ -1,5 +1,3 @@
-import { Link } from "react-router-dom";
-
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessGate } from "../../hooks/useBusinessGate";
 
@@ -38,23 +36,8 @@ export default function PendingVerification() {
         </div>
         <h1 style={{ margin: "12px 0 6px", fontSize: 26, color: "#0f1f40" }}>Your payment & KYC are under review</h1>
         <p style={{ margin: 0, color: "#4b5b77", lineHeight: 1.6 }}>
-          Approval usually takes 24 hours. You can continue exploring the dashboard while our team completes the review.
+          Approval usually takes 24 hours. We will notify you once the review is complete.
         </p>
-
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <Link
-            to="/business/dashboard"
-            style={{ padding: "12px 14px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0f73ce 0%, #0c5aad 100%)", color: "#fff", fontWeight: 900, textDecoration: "none", boxShadow: "0 12px 24px rgba(15,115,206,0.25)" }}
-          >
-            Go to Dashboard
-          </Link>
-          <Link
-            to="/business/kyc"
-            style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", fontWeight: 800, textDecoration: "none" }}
-          >
-            Review KYC Details
-          </Link>
-        </div>
       </div>
     </div>
   );

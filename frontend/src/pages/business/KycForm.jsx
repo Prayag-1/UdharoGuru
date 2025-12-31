@@ -25,7 +25,7 @@ const gridTwo = { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fi
 
 export default function KycForm() {
   const navigate = useNavigate();
-  const { user, setUserState } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { loading } = useBusinessGate("/business/kyc");
   const [form, setForm] = useState({
     first_name: user?.full_name?.split(" ")?.[0] || "",
@@ -48,7 +48,7 @@ export default function KycForm() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [previewId, setPreviewId] = useState("");
   const [previewPay, setPreviewPay] = useState("");
 
@@ -117,21 +117,26 @@ export default function KycForm() {
     );
   };
 
-  const submit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (!isValid || loading) return;
+    if (!isValid || loading || submitting) return;
+    setError("");
+    setConfirmOpen(true);
+  };
+
+  const submitKyc = async () => {
+    if (submitting) return;
     setSubmitting(true);
     setError("");
-    setSuccess("");
+    setConfirmOpen(false);
     try {
       const payload = new FormData();
       Object.entries(form).forEach(([key, value]) => {
         if (value) payload.append(key, value);
       });
       await submitBusinessKyc(payload);
-      setSuccess("KYC submitted successfully. Redirecting to review screen...");
-      setUserState((prev) => (prev ? { ...prev, business_status: "KYC_SUBMITTED" } : prev));
-      setTimeout(() => navigate("/business/pending", { replace: true }), 700);
+      await refreshUser();
+      navigate("/business/pending", { replace: true });
     } catch (err) {
       setError(extractMessage(err));
     } finally {
@@ -172,7 +177,7 @@ export default function KycForm() {
           </p>
         </div>
 
-        <form onSubmit={submit} style={{ padding: "28px 40px 36px", display: "grid", gap: 18 }}>
+        <form onSubmit={handleSubmit} style={{ padding: "28px 40px 36px", display: "grid", gap: 18 }}>
           <div style={{ ...gridTwo }}>
             <label style={labelStyle}>
               <span>First Name *</span>
@@ -345,13 +350,76 @@ export default function KycForm() {
                 {error}
               </div>
             )}
-            {success && (
-              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.25)", color: "#0f172a", fontWeight: 700 }}>
-                {success}
-              </div>
-            )}
         </form>
       </div>
+
+      {confirmOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              background: "#ffffff",
+              borderRadius: 16,
+              padding: 22,
+              boxShadow: "0 20px 60px rgba(15,23,42,0.28)",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <div style={{ fontWeight: 900, fontSize: 18, color: "#0f1f40", marginBottom: 8 }}>
+              Confirm submission
+            </div>
+            <p style={{ margin: 0, color: "#1f2d4f", lineHeight: 1.6 }}>
+              Are you sure you want to submit your KYC details? You won’t be able to edit them until reviewed.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#f8fafc",
+                  color: "#0f172a",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitKyc}
+                disabled={submitting}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "#2563eb",
+                  color: "#ffffff",
+                  fontWeight: 900,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  opacity: submitting ? 0.75 : 1,
+                  boxShadow: "0 12px 24px rgba(37,99,235,0.25)",
+                }}
+              >
+                {submitting ? "Submitting..." : "Yes, submit KYC"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

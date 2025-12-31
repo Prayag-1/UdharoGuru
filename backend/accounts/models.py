@@ -48,6 +48,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     BUSINESS_STATUS = (
         ('PENDING_PAYMENT', 'Pending Payment'),
         ('PAYMENT_SUBMITTED', 'Payment Submitted'),
+        ('UNDER_REVIEW', 'Under Review'),
         ('KYC_SUBMITTED', 'KYC Submitted'),
         ('APPROVED', 'Approved'),
         ('REJECTED', 'Rejected'),

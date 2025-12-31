@@ -13,7 +13,7 @@ const features = [
 export default function BusinessDashboard() {
   const { user } = useAuth();
   useBusinessGate("/business/dashboard");
-  const verified = user?.business_status === "APPROVED";
+  const verified = user?.kyc_status === "APPROVED";
 
   return (
     <div

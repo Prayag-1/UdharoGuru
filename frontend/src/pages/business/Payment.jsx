@@ -21,7 +21,7 @@ const badge = {
 
 export default function Payment() {
   const navigate = useNavigate();
-  const { user, setUserState } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { loading } = useBusinessGate("/business/payment");
   const [transactionCode, setTransactionCode] = useState("");
   const [file, setFile] = useState(null);
@@ -79,7 +79,7 @@ export default function Payment() {
       form.append("transaction_code", transactionCode);
       form.append("screenshot", file);
       await submitBusinessPayment(form);
-      setUserState((prev) => (prev ? { ...prev, business_status: "PAYMENT_SUBMITTED" } : prev));
+      await refreshUser();
       setSuccess("Payment submitted. Proceeding to KYC...");
       setTimeout(() => navigate("/business/kyc", { replace: true }), 600);
     } catch (err) {

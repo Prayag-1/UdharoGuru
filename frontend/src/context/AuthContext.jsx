@@ -19,9 +19,9 @@ export const resolveHomeRoute = (user) => {
   if (user.account_type === "BUSINESS") {
     const status = user.business_status;
     if (status === "APPROVED") return "/business/dashboard";
-    if (status === "KYC_SUBMITTED") return "/business/pending";
-    if (status === "PAYMENT_SUBMITTED") return "/business/kyc";
     if (status === "REJECTED") return "/business/rejected";
+    if (status === "UNDER_REVIEW" || status === "KYC_SUBMITTED") return "/business/pending";
+    if (status === "PAYMENT_SUBMITTED") return "/business/kyc";
     return "/business/payment";
   }
   return "/auth";
@@ -62,6 +62,7 @@ export function AuthProvider({ children }) {
 
   const extractMessage = (err, fallback) => {
     const data = err?.response?.data;
+    const status = err?.response?.status;
     const fieldError =
       data &&
       Object.keys(data)
@@ -74,7 +75,18 @@ export function AuthProvider({ children }) {
       data?.non_field_errors?.[0] ||
       data?.error ||
       fieldError;
-    return msg || fallback;
+    if (msg) return msg;
+    if (status === 401) return "Unauthorized";
+    if (status === 409) return "Conflict";
+    return fallback;
+  };
+
+  const buildError = (err, fallback) => {
+    const message = extractMessage(err, fallback);
+    const wrapped = new Error(message);
+    wrapped.status = err?.response?.status;
+    wrapped.data = err?.response?.data;
+    return wrapped;
   };
 
   const login = useCallback(
@@ -85,7 +97,7 @@ export function AuthProvider({ children }) {
         const profile = await loadUser();
         return profile;
       } catch (err) {
-        throw new Error(extractMessage(err, "Unable to login."));
+        throw buildError(err, "Unable to login.");
       }
     },
     [loadUser]
@@ -107,7 +119,7 @@ export function AuthProvider({ children }) {
         }
         return null;
       } catch (err) {
-        throw new Error(extractMessage(err, "Unable to register."));
+        throw buildError(err, "Unable to register.");
       }
     },
     [loadUser]

@@ -63,8 +63,9 @@ class BusinessKYCAdmin(admin.ModelAdmin):
       kyc.reviewed_at = now
       kyc.rejection_reason = ""
       kyc.save(update_fields=["is_approved", "reviewed_by", "reviewed_at", "rejection_reason", "updated_at"])
+      kyc.user.kyc_status = "APPROVED"
       kyc.user.business_status = "APPROVED"
-      kyc.user.save(update_fields=["business_status"])
+      kyc.user.save(update_fields=["kyc_status", "business_status"])
       count += 1
     self.message_user(request, f"Approved {count} KYC record(s).")
   approve_kyc.short_description = "Approve KYC"
@@ -79,8 +80,9 @@ class BusinessKYCAdmin(admin.ModelAdmin):
       kyc.reviewed_by = request.user
       kyc.reviewed_at = now
       kyc.save(update_fields=["is_approved", "reviewed_by", "reviewed_at", "rejection_reason", "updated_at"])
+      kyc.user.kyc_status = "REJECTED"
       kyc.user.business_status = "REJECTED"
-      kyc.user.save(update_fields=["business_status"])
+      kyc.user.save(update_fields=["kyc_status", "business_status"])
       count += 1
     self.message_user(request, f"Rejected {count} KYC record(s).")
   reject_kyc.short_description = "Reject KYC"
