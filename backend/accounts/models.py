@@ -1,7 +1,15 @@
+import random
+import string
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
+
+
+def generate_invite_code():
+    random_part = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"UDH-{random_part}"
 
 
 class UserManager(BaseUserManager):
@@ -66,6 +74,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         choices=BUSINESS_STATUS,
         default='PAYMENT_PENDING',
     )
+    invite_code = models.CharField(
+        max_length=10,
+        unique=True,
+        null=True,
+        blank=True,
+        editable=False,
+        db_index=True,
+    )
     is_email_verified = models.BooleanField(default=True)
 
     is_active = models.BooleanField(default=True)
@@ -79,6 +95,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    def save(self, *args, **kwargs):
+        if self.account_type == 'PRIVATE' and not self.invite_code:
+            candidate = generate_invite_code()
+            while User.objects.filter(invite_code=candidate).exists():
+                candidate = generate_invite_code()
+            self.invite_code = candidate
+        elif self.account_type != 'PRIVATE':
+            # Keep invite_code unset for non-private accounts.
+            self.invite_code = None
+        super().save(*args, **kwargs)
 
 
 class BusinessPayment(models.Model):
