@@ -10,11 +10,10 @@ const targetForStatus = (status) => {
     case "REJECTED":
       return "/business/rejected";
     case "UNDER_REVIEW":
-    case "KYC_SUBMITTED":
       return "/business/pending";
-    case "PAYMENT_SUBMITTED":
+    case "KYC_PENDING":
       return "/business/kyc";
-    case "PENDING_PAYMENT":
+    case "PAYMENT_PENDING":
     default:
       return "/business/payment";
   }

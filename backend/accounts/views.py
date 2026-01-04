@@ -15,6 +15,33 @@ from .serializers import (
     UserSerializer,
 )
 
+ALLOWED_BUSINESS_STATUSES = {"PAYMENT_PENDING", "KYC_PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED"}
+
+
+def _normalize_business_status(user):
+    current = getattr(user, "business_status", None)
+    if current not in ALLOWED_BUSINESS_STATUSES:
+        user.business_status = "PAYMENT_PENDING"
+        user.save(update_fields=["business_status"])
+        return user.business_status
+    return current
+
+
+def _sync_with_kyc(user):
+    """
+    Keep business_status and KYC.is_approved aligned.
+    """
+    kyc = getattr(user, "business_kyc", None)
+    if not kyc:
+        return None
+    if kyc.is_approved and user.business_status != "APPROVED":
+        user.business_status = "APPROVED"
+        user.save(update_fields=["business_status"])
+    elif user.business_status == "APPROVED" and not kyc.is_approved:
+        kyc.is_approved = True
+        kyc.save(update_fields=["is_approved", "updated_at"])
+    return kyc
+
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -45,6 +72,8 @@ class MeView(APIView):
 
     def get(self, request):
         request.user.refresh_from_db()
+        _normalize_business_status(request.user)
+        _sync_with_kyc(request.user)
         return Response(MeSerializer(request.user).data, status=status.HTTP_200_OK)
 
 
@@ -73,7 +102,7 @@ class BusinessPaymentSubmitView(BusinessOnlyMixin, APIView):
         serializer.is_valid(raise_exception=True)
         payment = serializer.save()
 
-        request.user.business_status = "PAYMENT_SUBMITTED"
+        request.user.business_status = "KYC_PENDING"
         request.user.save(update_fields=["business_status"])
 
         return Response(BusinessPaymentSerializer(payment).data, status=status.HTTP_200_OK)
@@ -111,20 +140,27 @@ class BusinessStatusView(BusinessOnlyMixin, APIView):
         if forbidden:
             return forbidden
 
-        request.user.refresh_from_db()
+        request.user.refresh_from_db(fields=["business_status", "kyc_status"])
         payment = getattr(request.user, "business_payment", None)
         kyc = getattr(request.user, "business_kyc", None)
+        current_status = _normalize_business_status(request.user)
+        synced_kyc = _sync_with_kyc(request.user)
+        if synced_kyc:
+            kyc = synced_kyc
+        if current_status == "UNDER_REVIEW" and kyc is None:
+            current_status = "KYC_PENDING"
+            request.user.business_status = current_status
+            request.user.save(update_fields=["business_status"])
 
         return Response(
             {
-                "business_status": request.user.business_status,
+                "business_status": current_status,
                 "kyc_status": request.user.kyc_status,
                 "payment": {"is_verified": bool(getattr(payment, "is_verified", False))} if payment else None,
                 "kyc": {
                     "is_approved": bool(getattr(kyc, "is_approved", False)),
                     "rejection_reason": getattr(kyc, "rejection_reason", "") if kyc else "",
                     "reviewed_at": getattr(kyc, "reviewed_at", None) if kyc else None,
-                    "reviewed_by": getattr(getattr(kyc, "reviewed_by", None), "id", None) if kyc else None,
                 }
                 if kyc
                 else None,

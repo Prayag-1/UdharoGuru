@@ -20,8 +20,8 @@ export const resolveHomeRoute = (user) => {
     const status = user.business_status;
     if (status === "APPROVED") return "/business/dashboard";
     if (status === "REJECTED") return "/business/rejected";
-    if (status === "UNDER_REVIEW" || status === "KYC_SUBMITTED") return "/business/pending";
-    if (status === "PAYMENT_SUBMITTED") return "/business/kyc";
+    if (status === "UNDER_REVIEW") return "/business/pending";
+    if (status === "KYC_PENDING") return "/business/kyc";
     return "/business/payment";
   }
   return "/auth";

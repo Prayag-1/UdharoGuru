@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -27,7 +29,7 @@ class BusinessPaymentAdmin(admin.ModelAdmin):
 
 @admin.register(BusinessKYC)
 class BusinessKYCAdmin(admin.ModelAdmin):
-  list_display = ("user", "is_approved", "business_status", "reviewed_by", "reviewed_at", "created_at")
+  list_display = ("user", "is_approved", "business_status", "reviewed_at", "created_at")
   list_filter = ("is_approved", "country", "city")
   search_fields = ("user__email", "business_name", "registration_pan")
   readonly_fields = (
@@ -36,7 +38,23 @@ class BusinessKYCAdmin(admin.ModelAdmin):
       "created_at",
       "updated_at",
   )
+  exclude = ("reviewed_by",)
   actions = ["approve_kyc", "reject_kyc"]
+
+  def has_module_permission(self, request):
+    return bool(request.user and request.user.is_active and request.user.is_superuser)
+
+  def has_view_permission(self, request, obj=None):
+    return self.has_module_permission(request)
+
+  def has_change_permission(self, request, obj=None):
+    return self.has_module_permission(request)
+
+  def has_add_permission(self, request):
+    return self.has_module_permission(request)
+
+  def has_delete_permission(self, request, obj=None):
+    return self.has_module_permission(request)
 
   def business_status(self, obj):
     return obj.user.business_status
@@ -54,35 +72,47 @@ class BusinessKYCAdmin(admin.ModelAdmin):
     return "-"
   payment_screenshot_preview.short_description = "Payment Screenshot"
 
+  def save_model(self, request, obj, form, change):
+    super().save_model(request, obj, form, change)
+    # Keep status and approval aligned whenever an admin edits the record.
+    if obj.is_approved and obj.user.business_status != "APPROVED":
+      obj.user.business_status = "APPROVED"
+      obj.user.save(update_fields=["business_status"])
+    elif obj.user.business_status == "APPROVED" and not obj.is_approved:
+      obj.is_approved = True
+      obj.save(update_fields=["is_approved", "updated_at"])
+
   def approve_kyc(self, request, queryset):
+    if not request.user.is_superuser:
+      raise PermissionDenied("Only superusers can approve KYC.")
     now = timezone.now()
     count = 0
-    for kyc in queryset:
-      kyc.is_approved = True
-      kyc.reviewed_by = request.user
-      kyc.reviewed_at = now
-      kyc.rejection_reason = ""
-      kyc.save(update_fields=["is_approved", "reviewed_by", "reviewed_at", "rejection_reason", "updated_at"])
-      kyc.user.kyc_status = "APPROVED"
-      kyc.user.business_status = "APPROVED"
-      kyc.user.save(update_fields=["kyc_status", "business_status"])
-      count += 1
+    with transaction.atomic():
+      for kyc in queryset.select_for_update():
+        kyc.is_approved = True
+        kyc.reviewed_at = now
+        kyc.rejection_reason = ""
+        kyc.save(update_fields=["is_approved", "reviewed_at", "rejection_reason", "updated_at"])
+        kyc.user.business_status = "APPROVED"
+        kyc.user.save(update_fields=["business_status"])
+        count += 1
     self.message_user(request, f"Approved {count} KYC record(s).")
   approve_kyc.short_description = "Approve KYC"
 
   def reject_kyc(self, request, queryset):
+    if not request.user.is_superuser:
+      raise PermissionDenied("Only superusers can reject KYC.")
     now = timezone.now()
     count = 0
-    for kyc in queryset:
-      if not kyc.rejection_reason:
-        kyc.rejection_reason = "Rejected via admin action."
-      kyc.is_approved = False
-      kyc.reviewed_by = request.user
-      kyc.reviewed_at = now
-      kyc.save(update_fields=["is_approved", "reviewed_by", "reviewed_at", "rejection_reason", "updated_at"])
-      kyc.user.kyc_status = "REJECTED"
-      kyc.user.business_status = "REJECTED"
-      kyc.user.save(update_fields=["kyc_status", "business_status"])
-      count += 1
+    with transaction.atomic():
+      for kyc in queryset.select_for_update():
+        if not kyc.rejection_reason:
+          kyc.rejection_reason = "Rejected via admin action."
+        kyc.is_approved = False
+        kyc.reviewed_at = now
+        kyc.save(update_fields=["is_approved", "reviewed_at", "rejection_reason", "updated_at"])
+        kyc.user.business_status = "REJECTED"
+        kyc.user.save(update_fields=["business_status"])
+        count += 1
     self.message_user(request, f"Rejected {count} KYC record(s).")
   reject_kyc.short_description = "Reject KYC"

@@ -15,6 +15,10 @@ class UserManager(BaseUserManager):
             full_name=full_name,
             account_type=account_type,
         )
+        if account_type == 'BUSINESS':
+            user.business_status = 'PAYMENT_PENDING'
+        else:
+            user.business_status = 'APPROVED'
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -46,10 +50,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('REJECTED', 'Rejected'),
     )
     BUSINESS_STATUS = (
-        ('PENDING_PAYMENT', 'Pending Payment'),
-        ('PAYMENT_SUBMITTED', 'Payment Submitted'),
+        ('PAYMENT_PENDING', 'Payment Pending'),
+        ('KYC_PENDING', 'KYC Pending'),
         ('UNDER_REVIEW', 'Under Review'),
-        ('KYC_SUBMITTED', 'KYC Submitted'),
         ('APPROVED', 'Approved'),
         ('REJECTED', 'Rejected'),
     )
@@ -61,7 +64,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     business_status = models.CharField(
         max_length=20,
         choices=BUSINESS_STATUS,
-        default='PENDING_PAYMENT',
+        default='PAYMENT_PENDING',
     )
     is_email_verified = models.BooleanField(default=True)
 

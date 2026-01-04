@@ -19,6 +19,17 @@ const features = [
   },
 ];
 
+const accountVariants = {
+  PRIVATE: {
+    badge: "Personal wallet",
+    blurb: "Keep your own lends and borrows tidy with smart reminders.",
+  },
+  BUSINESS: {
+    badge: "Business ledger",
+    blurb: "Onboard clients faster and manage invoices with confidence.",
+  },
+};
+
 export default function Signup() {
   const [form, setForm] = useState({
     full_name: "",
@@ -47,6 +58,7 @@ export default function Signup() {
   };
 
   const accountTab = (active) => `tab-toggle ${active ? "tab-active" : ""}`;
+  const accountMeta = accountVariants[form.account_type] || accountVariants.PRIVATE;
 
   return (
     <div className="signup-page">
@@ -74,15 +86,27 @@ export default function Signup() {
           </div>
         </section>
 
-        <section className="signup-form-panel">
+        <section
+          className={`signup-form-panel ${
+            form.account_type === "BUSINESS" ? "type-business" : "type-personal"
+          }`}
+        >
           <div className="hero-pill pill-light">
             <span className="dot dot-light" />
-            UdharoGuru - Business Portal
+            {form.account_type === "BUSINESS" ? "Business account" : "Personal account"}
           </div>
           <h2>Sign up to continue</h2>
           <p className="form-lede">
             Access your dashboard, send reminders, and keep your books accurate every day.
           </p>
+
+          <div className="account-flip">
+            <div className="account-flip-badge">
+              <span className="pulse-dot" />
+              {accountMeta.badge}
+            </div>
+            <p>{accountMeta.blurb}</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="signup-form">
             <div className="tab-row">
