@@ -1,10 +1,32 @@
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import is_password_usable
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import BusinessKYC, BusinessPayment
+
+User = get_user_model()
+
+
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+  list_display = ("email", "full_name", "account_type", "invite_code", "is_active", "is_staff", "date_joined")
+  list_filter = ("account_type", "is_active", "is_staff")
+  search_fields = ("email", "full_name", "invite_code")
+  readonly_fields = ("invite_code", "date_joined", "last_login")
+  ordering = ("-date_joined",)
+
+  def save_model(self, request, obj, form, change):
+    # Ensure passwords are hashed when created/edited via admin.
+    password = form.cleaned_data.get("password")
+    if password and not is_password_usable(password):
+      obj.set_password(password)
+    elif password and not password.startswith("pbkdf2_"):
+      obj.set_password(password)
+    super().save_model(request, obj, form, change)
 
 
 @admin.register(BusinessPayment)

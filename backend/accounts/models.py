@@ -27,6 +27,7 @@ class UserManager(BaseUserManager):
             user.business_status = 'PAYMENT_PENDING'
         else:
             user.business_status = 'APPROVED'
+        user.is_active = True
         user.set_password(password)
         user.save(using=self._db)
         return user

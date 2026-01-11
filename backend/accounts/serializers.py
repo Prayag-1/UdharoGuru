@@ -1,3 +1,4 @@
+from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
@@ -51,9 +52,10 @@ class UserSerializer(serializers.ModelSerializer):
             "account_type",
             "kyc_status",
             "business_status",
+            "invite_code",
             "date_joined",
         )
-        read_only_fields = ("id", "kyc_status", "business_status", "date_joined")
+        read_only_fields = ("id", "kyc_status", "business_status", "invite_code", "date_joined")
 
 
 class MeSerializer(serializers.ModelSerializer):
@@ -66,13 +68,31 @@ class MeSerializer(serializers.ModelSerializer):
             "account_type",
             "kyc_status",
             "business_status",
+            "invite_code",
         )
         read_only_fields = fields
 
 
 class SimpleTokenObtainPairSerializer(TokenObtainPairSerializer):
-    # No email verification checks; standard JWT issuance.
-    pass
+    def validate(self, attrs):
+        email = attrs.get("email") or attrs.get(self.username_field)
+        password = attrs.get("password")
+        user_lookup = User.objects.filter(email=email).first()
+        if not user_lookup:
+            raise serializers.ValidationError({"detail": "User not found."})
+        if not user_lookup.is_active:
+            raise serializers.ValidationError({"detail": "This account is inactive."})
+
+        user = authenticate(self.context.get("request"), email=email, password=password)
+        if not user:
+            raise serializers.ValidationError({"detail": "Invalid credentials."})
+
+        self.user = user
+        refresh = self.get_token(user)
+        return {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
 
 
 class BusinessPaymentSerializer(serializers.ModelSerializer):

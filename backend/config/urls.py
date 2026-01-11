@@ -20,6 +20,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
     path("api/business/", include("accounts.business_urls")),
+    path("api/private/", include("private.urls")),
     path("api/", include(router.urls)),
     path("api/ocr/", include("ocr.urls")),
     path("api/analytics/total-outstanding/", TotalOutstandingView.as_view()),
