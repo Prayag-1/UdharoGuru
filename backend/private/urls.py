@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     PrivateConnectView,
+    PrivateConnectionListView,
     PrivateItemLoanViewSet,
     PrivateItemReminderDueView,
     PrivateItemReturnView,
@@ -16,6 +17,7 @@ router.register(r"items", PrivateItemLoanViewSet, basename="private-items")
 
 urlpatterns = [
     path("connect/", PrivateConnectView.as_view(), name="private-connect"),
+    path("connections/", PrivateConnectionListView.as_view(), name="private-connections-list"),
     path("transactions/summary/", PrivateMoneySummaryView.as_view(), name="private-transaction-summary"),
     path("items/reminder-due/", PrivateItemReminderDueView.as_view(), name="private-item-reminder-due"),
     path("items/<int:pk>/return/", PrivateItemReturnView.as_view(), name="private-item-return"),

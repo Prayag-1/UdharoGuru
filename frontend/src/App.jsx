@@ -10,7 +10,11 @@ import Payment from "./pages/business/Payment";
 import KycForm from "./pages/business/KycForm";
 import PendingVerification from "./pages/business/PendingVerification";
 import Rejected from "./pages/business/Rejected";
-import PrivateDashboard from "./pages/private/PrivateDashboard";
+import PrivateLayout from "./pages/private/PrivateLayout";
+import DashboardView from "./pages/private/DashboardView";
+import ExpensesView from "./pages/private/ExpensesView";
+import FriendsView from "./pages/private/FriendsView";
+import ActivityView from "./pages/private/ActivityView";
 
 function App() {
   return (
@@ -30,7 +34,14 @@ function App() {
           <Route path="/business/pending" element={<PendingVerification />} />
           <Route path="/business/rejected" element={<Rejected />} />
 
-          <Route path="/private/dashboard" element={<PrivateDashboard />} />
+          <Route path="/private" element={<Navigate to="/private/dashboard" replace />} />
+          <Route path="/private/*" element={<PrivateLayout />}>
+            <Route path="dashboard" element={<DashboardView />} />
+            <Route path="expenses" element={<ExpensesView />} />
+            <Route path="friends" element={<FriendsView />} />
+            <Route path="activity" element={<ActivityView />} />
+            <Route path="*" element={<Navigate to="/private/dashboard" replace />} />
+          </Route>
 
           <Route path="*" element={<Navigate to="/auth/login" replace />} />
         </Routes>

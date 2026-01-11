@@ -53,6 +53,15 @@ class PrivateConnectionCreateSerializer(serializers.Serializer):
         }
 
 
+class PrivateConnectionSerializer(serializers.ModelSerializer):
+    connected_user_id = serializers.IntegerField(source="connected_user.id", read_only=True)
+    connected_user_email = serializers.EmailField(source="connected_user.email", read_only=True)
+
+    class Meta:
+        model = PrivateConnection
+        fields = ("id", "connected_user_id", "connected_user_email", "created_at")
+
+
 class PrivateMoneyTransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrivateMoneyTransaction

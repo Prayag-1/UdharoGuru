@@ -8,10 +8,11 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import PrivateItemLoan, PrivateMoneyTransaction
+from .models import PrivateConnection, PrivateItemLoan, PrivateMoneyTransaction
 from .permissions import IsPrivateAccount
 from .serializers import (
     PrivateConnectionCreateSerializer,
+    PrivateConnectionSerializer,
     PrivateMoneySummarySerializer,
     PrivateMoneyTransactionSerializer,
     PrivateItemLoanSerializer,
@@ -27,6 +28,15 @@ class PrivateConnectView(APIView):
         serializer.is_valid(raise_exception=True)
         connection = serializer.save()
         return Response(serializer.to_representation(connection), status=status.HTTP_201_CREATED)
+
+
+class PrivateConnectionListView(APIView):
+    permission_classes = [IsPrivateAccount]
+
+    def get(self, request):
+        qs = PrivateConnection.objects.filter(owner=request.user).select_related("connected_user")
+        serializer = PrivateConnectionSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class PrivateMoneyTransactionViewSet(viewsets.ModelViewSet):
