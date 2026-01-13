@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
+from django.db import models
 from rest_framework import serializers
 
-from .models import PrivateConnection, PrivateItemLoan, PrivateMoneyTransaction
+from .models import Group, GroupMember, PrivateConnection, PrivateItemLoan, PrivateMoneyTransaction
 
 User = get_user_model()
 
@@ -30,7 +31,9 @@ class PrivateConnectionCreateSerializer(serializers.Serializer):
         if target.id == owner.id:
             raise serializers.ValidationError({"invite_code": "You cannot connect to yourself."})
 
-        if PrivateConnection.objects.filter(owner=owner, connected_user=target).exists():
+        if PrivateConnection.objects.filter(
+            models.Q(owner=owner, connected_user=target) | models.Q(owner=target, connected_user=owner)
+        ).exists():
             raise serializers.ValidationError({"invite_code": "Connection already exists."})
 
         attrs["connected_user"] = target
@@ -39,11 +42,12 @@ class PrivateConnectionCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         owner = self.context["request"].user
         target = validated_data["connected_user"]
-        connection = PrivateConnection.objects.create(owner=owner, connected_user=target)
-        return connection
+        PrivateConnection.objects.create(owner=owner, connected_user=target)
+        PrivateConnection.objects.get_or_create(owner=target, connected_user=owner)
+        return target
 
     def to_representation(self, instance):
-        target = instance.connected_user
+        target = instance if isinstance(instance, User) else instance.connected_user
         return {
             "connected_user": {
                 "id": target.id,
@@ -60,6 +64,50 @@ class PrivateConnectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrivateConnection
         fields = ("id", "connected_user_id", "connected_user_email", "created_at")
+
+
+class PrivateFriendAddSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        owner = request.user
+        if owner.account_type != "PRIVATE":
+            raise serializers.ValidationError("Only private users can add friends.")
+
+        email = attrs["email"].lower().strip()
+        try:
+            target = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({"email": "User not found."})
+
+        if target.account_type != "PRIVATE":
+            raise serializers.ValidationError({"email": "Only private users can be added."})
+        if target.id == owner.id:
+            raise serializers.ValidationError({"email": "You cannot add yourself."})
+
+        exists = PrivateConnection.objects.filter(
+            models.Q(owner=owner, connected_user=target) | models.Q(owner=target, connected_user=owner)
+        ).exists()
+        if exists:
+            raise serializers.ValidationError({"email": "Already connected."})
+
+        attrs["target"] = target
+        return attrs
+
+    def create(self, validated_data):
+        owner = self.context["request"].user
+        target = validated_data["target"]
+        PrivateConnection.objects.create(owner=owner, connected_user=target)
+        PrivateConnection.objects.create(owner=target, connected_user=owner)
+        return target
+
+    def to_representation(self, instance):
+        return {
+            "id": instance.id,
+            "email": instance.email,
+            "invite_code": instance.invite_code,
+        }
 
 
 class PrivateMoneyTransactionSerializer(serializers.ModelSerializer):
@@ -82,6 +130,13 @@ class PrivateMoneySummarySerializer(serializers.Serializer):
     total_receivable = serializers.DecimalField(max_digits=12, decimal_places=2)
     total_payable = serializers.DecimalField(max_digits=12, decimal_places=2)
     net_balance = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class FriendSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    email = serializers.EmailField()
+    invite_code = serializers.CharField()
+    connected_at = serializers.DateTimeField()
 
 
 class PrivateItemLoanSerializer(serializers.ModelSerializer):
@@ -140,3 +195,22 @@ class PrivateItemReturnSerializer(serializers.Serializer):
         loan.last_reminder_sent_at = None
         loan.save(update_fields=["status", "reminder_enabled", "last_reminder_sent_at"])
         return loan
+
+
+class GroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = ("id", "name", "created_at")
+        read_only_fields = ("id", "created_at")
+
+
+class GroupListSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    member_count = serializers.IntegerField()
+    role = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
+class GroupMemberActionSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()

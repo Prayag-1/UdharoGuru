@@ -29,6 +29,37 @@ class PrivateConnection(models.Model):
         return f"{self.owner.email} -> {self.connected_user.email}"
 
 
+class Group(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="owned_groups")
+    name = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class GroupMember(models.Model):
+    ADMIN = "ADMIN"
+    MEMBER = "MEMBER"
+    ROLE_CHOICES = (
+        (ADMIN, "Admin"),
+        (MEMBER, "Member"),
+    )
+
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="memberships")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="group_memberships")
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=MEMBER)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["group", "user"], name="unique_group_member"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} in {self.group.name}"
+
+
 class PrivateMoneyTransaction(models.Model):
     LENT = "LENT"
     BORROWED = "BORROWED"

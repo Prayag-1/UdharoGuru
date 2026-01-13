@@ -4,9 +4,14 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     PrivateConnectView,
     PrivateConnectionListView,
+    PrivateFriendAddView,
+    PrivateFriendsListView,
     PrivateItemLoanViewSet,
     PrivateItemReminderDueView,
     PrivateItemReturnView,
+    GroupMemberAddView,
+    GroupMemberRemoveView,
+    GroupView,
     PrivateMoneySummaryView,
     PrivateMoneyTransactionViewSet,
 )
@@ -18,6 +23,11 @@ router.register(r"items", PrivateItemLoanViewSet, basename="private-items")
 urlpatterns = [
     path("connect/", PrivateConnectView.as_view(), name="private-connect"),
     path("connections/", PrivateConnectionListView.as_view(), name="private-connections-list"),
+    path("friends/", PrivateFriendsListView.as_view(), name="private-friends"),
+    path("friends/add/", PrivateFriendAddView.as_view(), name="private-friends-add"),
+    path("groups/", GroupView.as_view(), name="private-groups"),
+    path("groups/<int:group_id>/add-member/", GroupMemberAddView.as_view(), name="private-groups-add-member"),
+    path("groups/<int:group_id>/remove-member/", GroupMemberRemoveView.as_view(), name="private-groups-remove-member"),
     path("transactions/summary/", PrivateMoneySummaryView.as_view(), name="private-transaction-summary"),
     path("items/reminder-due/", PrivateItemReminderDueView.as_view(), name="private-item-reminder-due"),
     path("items/<int:pk>/return/", PrivateItemReturnView.as_view(), name="private-item-return"),
