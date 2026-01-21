@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from rest_framework import serializers
 
-from .models import Group, GroupMember, PrivateConnection, PrivateItemLoan, PrivateMoneyTransaction
+from .models import ChatMessage, ChatParticipant, ChatThread, Group, GroupMember, PrivateConnection, PrivateItemLoan, PrivateMoneyTransaction
 
 User = get_user_model()
 
@@ -214,3 +214,47 @@ class GroupListSerializer(serializers.Serializer):
 
 class GroupMemberActionSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
+
+
+class ChatThreadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatThread
+        fields = ("id", "thread_type", "group", "created_at")
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    sender_email = serializers.EmailField(source="sender.email", read_only=True)
+
+    class Meta:
+        model = ChatMessage
+        fields = ("id", "sender", "sender_email", "message", "created_at")
+        read_only_fields = ("id", "sender_email", "created_at", "sender")
+
+
+class DirectThreadSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        owner = request.user
+        if owner.account_type != "PRIVATE":
+            raise serializers.ValidationError("Private account required.")
+
+        try:
+            target = User.objects.get(id=attrs["user_id"])
+        except User.DoesNotExist:
+            raise serializers.ValidationError({"user_id": "User not found."})
+
+        if target.account_type != "PRIVATE":
+            raise serializers.ValidationError({"user_id": "Only private users allowed."})
+        if target.id == owner.id:
+            raise serializers.ValidationError({"user_id": "Cannot chat with yourself."})
+
+        connected = PrivateConnection.objects.filter(
+            models.Q(owner=owner, connected_user=target) | models.Q(owner=target, connected_user=owner)
+        ).exists()
+        if not connected:
+            raise serializers.ValidationError({"user_id": "User must be your friend."})
+
+        attrs["target"] = target
+        return attrs

@@ -46,11 +46,3 @@ frontend/dist/
 Thumbs.db
 .DS_Store
 
-# Django media uploads
-media/
-backend/media/
-uploads/
-backend/uploads/
-*.png
-*.jpg
-*.jpeg

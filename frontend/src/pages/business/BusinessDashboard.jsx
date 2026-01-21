@@ -2,7 +2,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useBusinessGate } from "../../hooks/useBusinessGate";
 
 const features = [
-  { name: "OCR Upload", desc: "Scan receipts and extract udharo automatically." },
+  { name: "OCR Upload", desc: "Scan receipts and extract udharo automatically.", cta: "/business/ocr" },
   { name: "Inventory Udharo", desc: "Track items given on credit." },
   { name: "Loan Ledger", desc: "Manage business loans and repayments." },
   { name: "Top Debtors", desc: "Identify customers with highest outstanding." },
@@ -13,7 +13,7 @@ const features = [
 export default function BusinessDashboard() {
   const { user } = useAuth();
   useBusinessGate("/business/dashboard");
-  const verified = user?.kyc_status === "APPROVED";
+  const verified = user?.business_status === "APPROVED";
 
   return (
     <div
@@ -54,8 +54,8 @@ export default function BusinessDashboard() {
                 pointerEvents: verified ? "auto" : "none",
                 transition: "opacity 0.2s ease",
               }}
-            >
-              <div style={{ fontWeight: 900 }}>{f.name}</div>
+              >
+                <div style={{ fontWeight: 900 }}>{f.name}</div>
 
               <div
                 style={{
@@ -78,6 +78,24 @@ export default function BusinessDashboard() {
               >
                 {verified ? "Enabled" : "Requires verification"}
               </div>
+              {verified && f.cta && (
+                <a
+                  href={f.cta}
+                  style={{
+                    marginTop: 10,
+                    display: "inline-flex",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #1f2937",
+                    background: "#0f172a",
+                    color: "#e2e8f0",
+                    fontWeight: 800,
+                    textDecoration: "none",
+                  }}
+                >
+                  Open
+                </a>
+              )}
             </div>
           ))}
         </div>

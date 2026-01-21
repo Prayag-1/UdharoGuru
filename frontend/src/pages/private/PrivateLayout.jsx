@@ -55,6 +55,7 @@ export default function PrivateLayout() {
       { to: "/private/activity", label: "Recent activity" },
       { to: "/private/expenses", label: "All expenses" },
       { to: "/private/friends", label: "Friends" },
+      { to: "/private/groups", label: "Groups" },
     ],
     []
   );

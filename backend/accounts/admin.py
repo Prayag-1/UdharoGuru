@@ -99,9 +99,12 @@ class BusinessKYCAdmin(admin.ModelAdmin):
     # Keep status and approval aligned whenever an admin edits the record.
     if obj.is_approved and obj.user.business_status != "APPROVED":
       obj.user.business_status = "APPROVED"
-      obj.user.save(update_fields=["business_status"])
+      obj.user.kyc_status = "APPROVED"
+      obj.user.save(update_fields=["business_status", "kyc_status"])
     elif obj.user.business_status == "APPROVED" and not obj.is_approved:
       obj.is_approved = True
+      obj.user.kyc_status = "APPROVED"
+      obj.user.save(update_fields=["kyc_status"])
       obj.save(update_fields=["is_approved", "updated_at"])
 
   def approve_kyc(self, request, queryset):
@@ -116,7 +119,8 @@ class BusinessKYCAdmin(admin.ModelAdmin):
         kyc.rejection_reason = ""
         kyc.save(update_fields=["is_approved", "reviewed_at", "rejection_reason", "updated_at"])
         kyc.user.business_status = "APPROVED"
-        kyc.user.save(update_fields=["business_status"])
+        kyc.user.kyc_status = "APPROVED"
+        kyc.user.save(update_fields=["business_status", "kyc_status"])
         count += 1
     self.message_user(request, f"Approved {count} KYC record(s).")
   approve_kyc.short_description = "Approve KYC"
@@ -134,7 +138,8 @@ class BusinessKYCAdmin(admin.ModelAdmin):
         kyc.reviewed_at = now
         kyc.save(update_fields=["is_approved", "reviewed_at", "rejection_reason", "updated_at"])
         kyc.user.business_status = "REJECTED"
-        kyc.user.save(update_fields=["business_status"])
+        kyc.user.kyc_status = "REJECTED"
+        kyc.user.save(update_fields=["business_status", "kyc_status"])
         count += 1
     self.message_user(request, f"Rejected {count} KYC record(s).")
   reject_kyc.short_description = "Reject KYC"

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { resolveHomeRoute, useAuth } from "../context/AuthContext";
 
@@ -22,21 +22,24 @@ const targetForStatus = (status) => {
 export const useBusinessGate = (currentPath) => {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
+  const hasChecked = useRef(false);
   const [data, setData] = useState({ business_status: null, payment: null, kyc: null, rejection_reason: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (hasChecked.current) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    if (user.account_type !== "BUSINESS") {
+      navigate(resolveHomeRoute(user), { replace: true });
+      setLoading(false);
+      hasChecked.current = true;
+      return;
+    }
+    hasChecked.current = true;
     const run = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      if (user.account_type !== "BUSINESS") {
-        navigate(resolveHomeRoute(user), { replace: true });
-        setLoading(false);
-        return;
-      }
       try {
         const profile = await refreshUser();
         const target = targetForStatus(profile?.business_status);
@@ -49,7 +52,7 @@ export const useBusinessGate = (currentPath) => {
             kyc_status: profile.kyc_status,
           });
         }
-        if (target && target !== currentPath && location.pathname !== target) {
+        if (target && target !== currentPath) {
           navigate(target, { replace: true });
         }
       } catch {
@@ -59,7 +62,7 @@ export const useBusinessGate = (currentPath) => {
       }
     };
     run();
-  }, [user, currentPath, navigate, location.pathname, refreshUser]);
+  }, [user?.id, currentPath, navigate, refreshUser]);
 
   return { ...data, loading };
 };

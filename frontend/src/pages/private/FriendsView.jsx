@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
-import { getPrivateTransactions } from "../../api/private";
+import { getOrCreateDirectThread, getPrivateTransactions, getThreadMessages, sendThreadMessage } from "../../api/private";
+import ChatPanel from "./components/ChatPanel";
 import "./PrivateDashboard.css";
 
 const formatCurrency = (value) =>
@@ -24,11 +25,18 @@ const normalizeConnection = (conn) => {
 };
 
 export default function FriendsView() {
-  const { connections } = useOutletContext();
+  const { connections, user } = useOutletContext();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedFriend, setSelectedFriend] = useState(null);
+  const [chatThread, setChatThread] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState(null);
+  const pollRef = useRef(null);
 
   const normalizedConnections = useMemo(() => connections.map(normalizeConnection), [connections]);
 
@@ -80,6 +88,78 @@ export default function FriendsView() {
     return transactions.filter((tx) => (tx.person_name || "").toLowerCase() === label);
   }, [normalizedConnections, selectedFriend, transactions]);
 
+  const loadChat = async (friendId) => {
+    if (!friendId) return;
+    setChatLoading(true);
+    setChatError(null);
+    setChatInput("");
+    if (pollRef.current) clearInterval(pollRef.current);
+    setChatThread(null);
+    setChatMessages([]);
+    try {
+      const { data: thread } = await getOrCreateDirectThread({ user_id: friendId });
+      setChatThread(thread);
+      const { data: msgs } = await getThreadMessages(thread.id);
+      setChatMessages(msgs);
+    } catch (err) {
+      console.error("Failed to load chat", err);
+      setChatThread(null);
+      setChatMessages([]);
+      setChatError("Unable to load chat right now.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!chatThread?.id) return;
+    const run = async () => {
+      try {
+        const { data } = await getThreadMessages(chatThread.id);
+        setChatMessages(data);
+      } catch (err) {
+        console.error("Failed to poll chat", err);
+      }
+    };
+    run();
+    pollRef.current = setInterval(run, 7000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [chatThread?.id]);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!chatThread?.id || !chatInput.trim()) return;
+    setChatSending(true);
+    setChatError(null);
+    try {
+      await sendThreadMessage(chatThread.id, { message: chatInput.trim() });
+      setChatInput("");
+      const { data } = await getThreadMessages(chatThread.id);
+      setChatMessages(data);
+    } catch (err) {
+      console.error("Failed to send message", err);
+      setChatError("Unable to send message.");
+    } finally {
+      setChatSending(false);
+    }
+  };
+
+  const activeFriend = useMemo(
+    () => normalizedConnections.find((c) => String(c.id) === String(selectedFriend)),
+    [normalizedConnections, selectedFriend]
+  );
+
+  const handleClearSelection = () => {
+    setSelectedFriend(null);
+    setChatThread(null);
+    setChatMessages([]);
+    setChatInput("");
+    setChatError(null);
+    if (pollRef.current) clearInterval(pollRef.current);
+  };
+
   return (
     <div className="dashboard-shell">
       <div className="section-heading" style={{ marginBottom: 8 }}>
@@ -107,7 +187,10 @@ export default function FriendsView() {
                   key={conn.id}
                   className="row-card"
                   style={{ gridTemplateColumns: "1fr auto", cursor: "pointer" }}
-                  onClick={() => setSelectedFriend(conn.id)}
+                  onClick={() => {
+                    setSelectedFriend(conn.id);
+                    loadChat(conn.id);
+                  }}
                 >
                   <div>
                     <div style={{ fontWeight: 800 }}>{conn.full_name || conn.email || `User ${conn.id}`}</div>
@@ -127,7 +210,7 @@ export default function FriendsView() {
         <div className="section-card">
           <div className="section-heading" style={{ marginBottom: 8 }}>
             <div style={{ fontWeight: 800 }}>Expenses with this friend</div>
-            <button className="button secondary" type="button" onClick={() => setSelectedFriend(null)}>
+            <button className="button secondary" type="button" onClick={handleClearSelection}>
               Clear filter
             </button>
           </div>
@@ -153,6 +236,21 @@ export default function FriendsView() {
             </div>
           )}
         </div>
+      )}
+
+      {selectedFriend && (
+        <ChatPanel
+          title={`Chat with ${activeFriend?.full_name || activeFriend?.email || "friend"}`}
+          subtitle="Text-only chat. Polls every few seconds and stays scoped to this friend."
+          loading={chatLoading}
+          messages={chatMessages}
+          inputValue={chatInput}
+          onInputChange={setChatInput}
+          onSend={handleSend}
+          sending={chatSending}
+          currentUserEmail={user?.email}
+          error={chatError}
+        />
       )}
     </div>
   );

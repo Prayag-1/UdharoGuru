@@ -135,3 +135,46 @@ class PrivateItemLoan(models.Model):
 
     def __str__(self):
         return f"{self.item_name} lent by {self.owner.email} to {self.borrower.email}"
+
+
+class ChatThread(models.Model):
+    DIRECT = "DIRECT"
+    GROUP = "GROUP"
+    TYPE_CHOICES = (
+        (DIRECT, "Direct"),
+        (GROUP, "Group"),
+    )
+
+    thread_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    group = models.OneToOneField("private.Group", on_delete=models.CASCADE, related_name="chat_thread", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        target = f"group={self.group_id}" if self.group_id else self.thread_type
+        return f"Thread {self.id} ({target})"
+
+
+class ChatParticipant(models.Model):
+    thread = models.ForeignKey(ChatThread, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_participations")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["thread", "user"], name="unique_chat_participant"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} in thread {self.thread_id}"
+
+
+class ChatMessage(models.Model):
+    thread = models.ForeignKey(ChatThread, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_messages")
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.sender.email}: {self.message[:20]}"

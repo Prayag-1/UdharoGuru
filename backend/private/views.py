@@ -10,9 +10,21 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Group, GroupMember, PrivateConnection, PrivateItemLoan, PrivateMoneyTransaction
+from .models import (
+    ChatMessage,
+    ChatParticipant,
+    ChatThread,
+    Group,
+    GroupMember,
+    PrivateConnection,
+    PrivateItemLoan,
+    PrivateMoneyTransaction,
+)
 from .permissions import IsPrivateAccount
 from .serializers import (
+    ChatMessageSerializer,
+    ChatThreadSerializer,
+    DirectThreadSerializer,
     FriendSerializer,
     GroupListSerializer,
     GroupMemberActionSerializer,
@@ -176,6 +188,15 @@ class PrivateItemReminderDueView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
+def get_or_create_group_thread(group):
+    thread, created = ChatThread.objects.get_or_create(group=group, defaults={"thread_type": ChatThread.GROUP})
+    if created:
+        members = group.memberships.select_related("user").all()
+        for member in members:
+            ChatParticipant.objects.get_or_create(thread=thread, user=member.user)
+    return thread
+
+
 class GroupView(APIView):
     permission_classes = [IsPrivateAccount]
 
@@ -200,6 +221,8 @@ class GroupView(APIView):
         serializer.is_valid(raise_exception=True)
         group = serializer.save(owner=request.user)
         GroupMember.objects.create(group=group, user=request.user, role=GroupMember.ADMIN)
+        thread = ChatThread.objects.create(thread_type=ChatThread.GROUP, group=group)
+        ChatParticipant.objects.create(thread=thread, user=request.user)
         return Response(GroupSerializer(group).data, status=status.HTTP_201_CREATED)
 
 
@@ -228,6 +251,8 @@ class GroupMemberAddView(APIView):
             return Response({"detail": "User must be your friend."}, status=status.HTTP_400_BAD_REQUEST)
 
         GroupMember.objects.create(group=group, user=target, role=GroupMember.MEMBER)
+        thread = get_or_create_group_thread(group)
+        ChatParticipant.objects.get_or_create(thread=thread, user=target)
         return Response({"detail": "Member added."}, status=status.HTTP_201_CREATED)
 
 
@@ -248,4 +273,71 @@ class GroupMemberRemoveView(APIView):
             return Response({"detail": "Cannot remove owner."}, status=status.HTTP_400_BAD_REQUEST)
 
         target_member.delete()
+        if hasattr(group, "chat_thread"):
+            ChatParticipant.objects.filter(thread=group.chat_thread, user_id=user_id).delete()
         return Response({"detail": "Member removed."}, status=status.HTTP_200_OK)
+
+
+class DirectChatThreadView(APIView):
+    permission_classes = [IsPrivateAccount]
+
+    def post(self, request):
+        serializer = DirectThreadSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        target = serializer.validated_data["target"]
+        user = request.user
+        thread = (
+            ChatThread.objects.filter(thread_type=ChatThread.DIRECT, participants__user=user)
+            .filter(participants__user=target)
+            .first()
+        )
+        if not thread:
+            thread = ChatThread.objects.create(thread_type=ChatThread.DIRECT)
+            ChatParticipant.objects.create(thread=thread, user=user)
+            ChatParticipant.objects.create(thread=thread, user=target)
+        return Response(ChatThreadSerializer(thread).data, status=status.HTTP_200_OK)
+
+
+class GroupChatThreadView(APIView):
+    permission_classes = [IsPrivateAccount]
+
+    def get(self, request, group_id):
+        group = get_object_or_404(Group, pk=group_id)
+        membership = GroupMember.objects.filter(group=group, user=request.user).first()
+        if not membership:
+            return Response({"detail": "Not in group."}, status=status.HTTP_403_FORBIDDEN)
+        thread = get_or_create_group_thread(group)
+        return Response(ChatThreadSerializer(thread).data, status=status.HTTP_200_OK)
+
+
+class ChatMessageView(APIView):
+    permission_classes = [IsPrivateAccount]
+
+    def get_thread(self, user, thread_id):
+        thread = get_object_or_404(ChatThread, pk=thread_id)
+        if not thread.participants.filter(user=user).exists():
+            raise PermissionError("Not a participant.")
+        return thread
+
+    def get(self, request, thread_id):
+        try:
+            thread = self.get_thread(request.user, thread_id)
+        except PermissionError:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        messages = thread.messages.select_related("sender").order_by("created_at")
+        serializer = ChatMessageSerializer(messages, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, thread_id):
+        try:
+            thread = self.get_thread(request.user, thread_id)
+        except PermissionError:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = ChatMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = ChatMessage.objects.create(
+            thread=thread,
+            sender=request.user,
+            message=serializer.validated_data["message"],
+        )
+        return Response(ChatMessageSerializer(message).data, status=status.HTTP_201_CREATED)
