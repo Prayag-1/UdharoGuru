@@ -7,4 +7,5 @@ urlpatterns = [
     path("kyc/submit/", BusinessKYCSubmitView.as_view(), name="business-kyc-submit"),
     path("status/", BusinessStatusView.as_view(), name="business-status"),
     path("ocr/", include("ocr.business_urls")),
+    path("ledger/", include("ocr.ledger_urls")),
 ]

@@ -16,10 +16,22 @@ const clearTokens = () => {
   window.dispatchEvent(new Event("auth:cleared"));
 };
 
+const applyAuthHeader = (token) => {
+  if (token) {
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common.Authorization;
+  }
+};
+
 const setTokens = (access, refresh) => {
   if (access) localStorage.setItem(ACCESS_KEY, access);
   if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
+  applyAuthHeader(access);
 };
+
+// Initialize auth header from stored token on load.
+applyAuthHeader(getAccessToken());
 
 api.interceptors.request.use((config) => {
   const token = getAccessToken();
@@ -82,6 +94,7 @@ api.interceptors.response.use(
           { skipAuthRefresh: true }
         );
         setAccessToken(data.access);
+        applyAuthHeader(data.access);
         processQueue(null, data.access);
         originalRequest.headers.Authorization = `Bearer ${data.access}`;
         return api(originalRequest);

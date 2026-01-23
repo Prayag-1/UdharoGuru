@@ -73,6 +73,11 @@ export default function OcrDetail() {
       setError("Login required.");
       return;
     }
+    if (user.account_type !== "BUSINESS") {
+      setLoading(false);
+      setError("Business account required for OCR.");
+      return;
+    }
     if (id) load();
   }, [gateLoading, id, user]);
 

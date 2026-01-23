@@ -72,10 +72,17 @@ class BusinessTransaction(models.Model):
         OCRDocument, on_delete=models.SET_NULL, null=True, blank=True, related_name="business_transaction"
     )
     merchant = models.CharField(max_length=255)
+    customer_name = models.CharField(max_length=255, blank=True, null=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     transaction_type = models.CharField(max_length=8, choices=TRANSACTION_TYPES)
     transaction_date = models.DateField()
     note = models.TextField(blank=True, null=True)
+    source = models.CharField(
+        max_length=10,
+        choices=(("MANUAL", "Manual"), ("OCR", "OCR")),
+        default="MANUAL",
+    )
+    is_settled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

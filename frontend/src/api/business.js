@@ -20,3 +20,13 @@ export const getBusinessOcr = (id) => api.get(`business/ocr/${id}/`);
 
 export const confirmBusinessOcr = (id, payload) =>
   api.post(`business/ocr/${id}/confirm/`, payload);
+
+export const getBusinessLedger = () => api.get("business/ledger/");
+
+export const addBusinessLedgerTransaction = (payload) =>
+  api.post("business/ledger/add/", payload);
+
+export const getBusinessCustomerBalances = () => api.get("business/ledger/customers/");
+
+export const getBusinessCustomerTransactions = (name) =>
+  api.get(`business/ledger/customers/${encodeURIComponent(name)}/`);
