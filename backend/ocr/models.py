@@ -60,11 +60,11 @@ class OCRDocument(models.Model):
 
 
 class BusinessTransaction(models.Model):
-    LENT = "LENT"
-    BORROWED = "BORROWED"
+    CREDIT = "CREDIT"
+    DEBIT = "DEBIT"
     TRANSACTION_TYPES = (
-        (LENT, "Lent"),
-        (BORROWED, "Borrowed"),
+        (CREDIT, "Credit"),
+        (DEBIT, "Debit"),
     )
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="business_transactions")
@@ -72,9 +72,9 @@ class BusinessTransaction(models.Model):
         OCRDocument, on_delete=models.SET_NULL, null=True, blank=True, related_name="business_transaction"
     )
     merchant = models.CharField(max_length=255)
-    customer_name = models.CharField(max_length=255, blank=True, null=True)
+    customer_name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    transaction_type = models.CharField(max_length=8, choices=TRANSACTION_TYPES)
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
     transaction_date = models.DateField()
     note = models.TextField(blank=True, null=True)
     source = models.CharField(
@@ -93,7 +93,7 @@ class BusinessTransaction(models.Model):
         constraints = [
             models.CheckConstraint(check=models.Q(amount__gt=0), name="business_money_amount_gt_zero"),
             models.CheckConstraint(
-                check=models.Q(transaction_type__in=["LENT", "BORROWED"]),
+                check=models.Q(transaction_type__in=["CREDIT", "DEBIT"]),
                 name="business_transaction_type_valid",
             ),
         ]

@@ -22,4 +22,11 @@ class OCRConfirmSerializer(serializers.Serializer):
     date = serializers.DateField()
     merchant = serializers.CharField(max_length=255)
     note = serializers.CharField(allow_blank=True, allow_null=True, required=False)
-    transaction_type = serializers.ChoiceField(choices=BusinessTransaction.TRANSACTION_TYPES)
+    transaction_type = serializers.ChoiceField(
+        choices=(
+            ("CREDIT", "CREDIT"),
+            ("DEBIT", "DEBIT"),
+            ("LENT", "LENT"),
+            ("BORROWED", "BORROWED"),
+        )
+    )

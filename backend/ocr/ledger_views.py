@@ -35,12 +35,14 @@ class BusinessLedgerCreateView(APIView):
         serializer = BusinessTransactionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        incoming_type = (data["transaction_type"] or "").upper()
+        model_type = "LENT" if incoming_type in ("CREDIT", "LENT") else "BORROWED"
         tx = BusinessTransaction.objects.create(
             owner=request.user,
             customer_name=data["customer_name"],
             merchant=data["customer_name"],
             amount=data["amount"],
-            transaction_type=data["transaction_type"],
+            transaction_type=model_type,
             transaction_date=data["transaction_date"],
             note=data.get("note") or "",
             source="MANUAL",
@@ -56,7 +58,7 @@ class BusinessCustomerBalancesView(APIView):
         rows = []
         for tx in qs:
             name = _normalize_customer(tx)
-            credit = tx.transaction_type in ("CREDIT", "LENT")
+            credit = (tx.transaction_type or "").upper() in ("CREDIT", "LENT")
             signed = tx.amount if credit else -tx.amount
             rows.append((name, signed))
 
