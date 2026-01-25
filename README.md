@@ -42,6 +42,6 @@ Your records stay yours. No hidden manipulation.
 
 Frontend: (e.g. React, Next.js, or specify)
 
-Backend: (e.g. Node.js / Express)
+Backend: django
 
-Database: (e.g. MongoDB / PostgreSQL)
+Database: PostgreSQL
