@@ -22,9 +22,13 @@ export const confirmBusinessOcr = (id, payload) =>
   api.post(`business/ocr/${id}/confirm/`, payload);
 
 export const getBusinessLedger = () => api.get("business/ledger/");
+export const getBusinessLedgerSummary = () => api.get("business/ledger/summary/");
 
 export const addBusinessLedgerTransaction = (payload) =>
   api.post("business/ledger/add/", payload);
+
+export const settleBusinessTransaction = (id) =>
+  api.patch(`business/ledger/${id}/settle/`);
 
 export const getBusinessCustomerBalances = () => api.get("business/ledger/customers/");
 

@@ -6,6 +6,7 @@ import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 import VerifyEmail from "./pages/auth/VerifyEmail";
 import BusinessDashboard from "./pages/business/BusinessDashboard";
+import BusinessLedger from "./pages/business/BusinessLedger";
 import Payment from "./pages/business/Payment";
 import KycForm from "./pages/business/KycForm";
 import PendingVerification from "./pages/business/PendingVerification";
@@ -31,6 +32,7 @@ function App() {
           <Route path="/auth/verify-email" element={<VerifyEmail />} />
 
           <Route path="/business/dashboard" element={<BusinessDashboard />} />
+          <Route path="/business/ledger" element={<BusinessLedger />} />
           <Route path="/business/payment" element={<Payment />} />
           <Route path="/business/kyc" element={<KycForm />} />
           <Route path="/business/kyc/review" element={<KycForm />} />

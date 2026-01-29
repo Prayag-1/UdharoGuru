@@ -18,9 +18,10 @@ class BusinessTransactionSerializer(serializers.ModelSerializer):
             "note",
             "source",
             "is_settled",
+            "settled_at",
             "created_at",
         )
-        read_only_fields = ("id", "source", "created_at", "is_settled", "merchant")
+        read_only_fields = ("id", "source", "created_at", "is_settled", "settled_at", "merchant")
 
 
 class BusinessTransactionCreateSerializer(serializers.Serializer):

@@ -56,7 +56,7 @@ class BusinessOCRTests(TestCase):
             "merchant": "Test Store",
             "amount": "12.50",
             "date": date.today().isoformat(),
-            "transaction_type": "LENT",
+            "transaction_type": "CREDIT",
             "note": "OCR confirm test",
         }
         res = self.client.post(f"/api/business/ocr/{doc.id}/confirm/", data=payload, format="json")
@@ -68,6 +68,79 @@ class BusinessOCRTests(TestCase):
         tx = BusinessTransaction.objects.get(ocr_document=doc)
         self.assertEqual(str(tx.amount), "12.50")
         self.assertEqual(tx.merchant, "Test Store")
+
+
+class BusinessLedgerSettlementTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.owner = User.objects.create_user(
+            email="owner@example.com",
+            full_name="Owner",
+            account_type="BUSINESS",
+            password="pass12345",
+        )
+        self.owner.kyc_status = "APPROVED"
+        self.owner.business_status = "APPROVED"
+        self.owner.save(update_fields=["kyc_status", "business_status"])
+
+        self.other_owner = User.objects.create_user(
+            email="other@example.com",
+            full_name="Other Owner",
+            account_type="BUSINESS",
+            password="pass12345",
+        )
+        self.other_owner.kyc_status = "APPROVED"
+        self.other_owner.business_status = "APPROVED"
+        self.other_owner.save(update_fields=["kyc_status", "business_status"])
+
+        self.private_user = User.objects.create_user(
+            email="private@example.com",
+            full_name="Private",
+            account_type="PRIVATE",
+            password="pass12345",
+        )
+
+    def create_tx(self, **kwargs):
+        defaults = {
+            "owner": self.owner,
+            "merchant": "Test Store",
+            "customer_name": "John Doe",
+            "amount": "25.00",
+            "transaction_type": "CREDIT",
+            "transaction_date": date.today(),
+            "source": "MANUAL",
+        }
+        defaults.update(kwargs)
+        return BusinessTransaction.objects.create(**defaults)
+
+    def test_owner_can_settle_once(self):
+        tx = self.create_tx()
+        self.client.force_authenticate(self.owner)
+
+        res = self.client.patch(f"/api/business/ledger/{tx.id}/settle/")
+        self.assertEqual(res.status_code, 200)
+
+        tx.refresh_from_db()
+        self.assertTrue(tx.is_settled)
+        self.assertIsNotNone(tx.settled_at)
+
+        # second attempt should fail with 400
+        res_repeat = self.client.patch(f"/api/business/ledger/{tx.id}/settle/")
+        self.assertEqual(res_repeat.status_code, 400)
+
+    def test_cannot_settle_other_users_transaction(self):
+        tx = self.create_tx(owner=self.other_owner)
+        self.client.force_authenticate(self.owner)
+
+        res = self.client.patch(f"/api/business/ledger/{tx.id}/settle/")
+        self.assertEqual(res.status_code, 404)
+
+    def test_private_user_blocked(self):
+        tx = self.create_tx()
+        self.client.force_authenticate(self.private_user)
+
+        res = self.client.patch(f"/api/business/ledger/{tx.id}/settle/")
+        self.assertEqual(res.status_code, 403)
 
 
 class GroupPersistenceTests(TestCase):

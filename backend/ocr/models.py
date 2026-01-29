@@ -83,6 +83,7 @@ class BusinessTransaction(models.Model):
         default="MANUAL",
     )
     is_settled = models.BooleanField(default=False)
+    settled_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

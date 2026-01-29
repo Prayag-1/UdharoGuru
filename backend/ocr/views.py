@@ -142,12 +142,15 @@ class BusinessOCRConfirmView(APIView):
         document.status = OCRDocument.CONFIRMED
         document.save(update_fields=["extracted_amount", "extracted_date", "extracted_merchant", "status"])
 
+        incoming_type = (data.get("transaction_type") or "").upper()
+        normalized_type = "CREDIT" if incoming_type in ("CREDIT", "LENT") else "DEBIT"
+
         transaction = BusinessTransaction.objects.create(
             owner=request.user,
             ocr_document=document,
             merchant=data["merchant"],
             amount=data["amount"],
-            transaction_type=data["transaction_type"],
+            transaction_type=normalized_type,
             transaction_date=data["date"],
             note=data.get("note") or "",
         )

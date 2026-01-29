@@ -1,40 +1,107 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
-import {
-  addBusinessLedgerTransaction,
-  getBusinessCustomerBalances,
-  getBusinessLedger,
-} from "../../api/business";
+import { getBusinessLedger, getBusinessLedgerSummary, listBusinessOcr } from "../../api/business";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessGate } from "../../hooks/useBusinessGate";
+import { LedgerHeader, LedgerRow, formatMoney } from "./components/LedgerRow";
 
-const currency = (value) => {
-  const num = Number(value || 0);
-  if (Number.isNaN(num)) return "—";
-  return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const initialSummary = {
+  receivable: 0,
+  payable: 0,
+  net: 0,
+  pending_ocr_drafts: 0,
+};
+
+const deriveSummary = (rows, draftCount = 0) => {
+  let receivable = 0;
+  let payable = 0;
+  rows.forEach((tx) => {
+    if (tx.is_settled === true) return;
+    const amount = Number(tx.amount || 0);
+    if (Number.isNaN(amount)) return;
+    const type = (tx.transaction_type || "").toUpperCase();
+    if (type === "CREDIT") receivable += amount;
+    else if (type === "DEBIT") payable += amount;
+  });
+  return {
+    receivable,
+    payable,
+    net: receivable - payable,
+    pending_ocr_drafts: draftCount || 0,
+  };
+};
+
+const normalizeSummaryResponse = (data) => {
+  const toNumber = (val) => {
+    const num = Number(val || 0);
+    return Number.isNaN(num) ? 0 : num;
+  };
+  const receivable = toNumber(data?.receivable);
+  const payable = toNumber(data?.payable);
+  const net = data && Object.prototype.hasOwnProperty.call(data, "net") ? toNumber(data.net) : receivable - payable;
+  const pending = Number.isFinite(Number(data?.pending_ocr_drafts))
+    ? Number(data.pending_ocr_drafts)
+    : 0;
+  return {
+    receivable,
+    payable,
+    net,
+    pending_ocr_drafts: pending,
+  };
 };
 
 export default function BusinessDashboard() {
   const { user } = useAuth();
   const gate = useBusinessGate("/business/dashboard");
-  const [ledger, setLedger] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const verified = user?.business_status === "APPROVED";
+  const [summary, setSummary] = useState(initialSummary);
+  const [summarySource, setSummarySource] = useState("api");
+  const [ledger, setLedger] = useState([]);
+  const hasFetched = useRef(false);
 
-  const loadLedger = async () => {
+  const verified = user?.business_status === "APPROVED";
+  const canView = user && user.account_type === "BUSINESS" && verified;
+  const gateMessage = !user
+    ? "Login required to view the business dashboard."
+    : user.account_type !== "BUSINESS"
+      ? "Business account required."
+      : `Business dashboard is available after KYC approval. Current status: ${user.business_status || "pending"}.`;
+
+  const fetchDraftCount = async () => {
+    try {
+      const { data } = await listBusinessOcr();
+      const docs = Array.isArray(data) ? data : data?.results || [];
+      return docs.filter((doc) => (doc.status || "").toUpperCase() === "DRAFT").length;
+    } catch {
+      return 0;
+    }
+  };
+
+  const loadDashboard = async () => {
     setLoading(true);
     setError("");
     try {
-      const [ledgerRes, customerRes] = await Promise.all([getBusinessLedger(), getBusinessCustomerBalances()]);
-      setLedger(Array.isArray(ledgerRes.data) ? ledgerRes.data : ledgerRes.data?.results || []);
-      setCustomers(Array.isArray(customerRes.data) ? customerRes.data : customerRes.data?.results || []);
+      const ledgerPromise = getBusinessLedger();
+      const summaryPromise = getBusinessLedgerSummary().catch((err) => ({ __error: err }));
+      const [ledgerRes, summaryRes] = await Promise.all([ledgerPromise, summaryPromise]);
+
+      const ledgerRows = Array.isArray(ledgerRes.data) ? ledgerRes.data : ledgerRes.data?.results || [];
+      setLedger(ledgerRows);
+
+      if (summaryRes && !summaryRes.__error && summaryRes.data) {
+        setSummary(normalizeSummaryResponse(summaryRes.data));
+        setSummarySource("api");
+      } else {
+        const draftCount = await fetchDraftCount();
+        setSummary(deriveSummary(ledgerRows, draftCount));
+        setSummarySource("client");
+      }
     } catch (err) {
-      setError("Unable to load ledger right now.");
+      setError("Unable to load dashboard data right now.");
+      setLedger([]);
+      setSummary(initialSummary);
     } finally {
       setLoading(false);
     }
@@ -42,178 +109,106 @@ export default function BusinessDashboard() {
 
   useEffect(() => {
     if (gate.loading) return;
-    if (!verified) {
+    if (!canView) {
       setLoading(false);
       return;
     }
-    loadLedger();
-  }, [gate.loading, verified]);
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+    loadDashboard();
+  }, [gate.loading, canView]);
 
-  const summary = useMemo(() => {
-    let receivable = 0;
-    let payable = 0;
-    ledger.forEach((tx) => {
-      const type = (tx.transaction_type || "").toUpperCase();
-      const amt = Number(tx.amount || 0);
-      const credit = type === "CREDIT" || type === "LENT";
-      if (credit) receivable += amt;
-      else payable += amt;
+  const recentLedger = useMemo(() => {
+    const sorted = [...ledger];
+    sorted.sort((a, b) => {
+      const aDate = new Date(a.transaction_date || a.created_at || 0).getTime();
+      const bDate = new Date(b.transaction_date || b.created_at || 0).getTime();
+      return bDate - aDate;
     });
-    return {
-      receivable,
-      payable,
-      net: receivable - payable,
-    };
+    return sorted.slice(0, 5);
   }, [ledger]);
 
-  const filteredLedger = useMemo(() => {
-    if (!selectedCustomer) return ledger;
-    return ledger.filter((tx) => (tx.customer_name || tx.merchant) === selectedCustomer);
-  }, [ledger, selectedCustomer]);
-
-  const handleCreate = async (payload) => {
-    setSaving(true);
-    setError("");
-    try {
-      await addBusinessLedgerTransaction(payload);
-      setModalOpen(false);
-      setSelectedCustomer(null);
-      await loadLedger();
-    } catch (err) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.response?.data?.non_field_errors?.[0] ||
-        err?.response?.data?.customer_name?.[0] ||
-        err?.response?.data?.amount?.[0] ||
-        "Unable to add transaction.";
-      setError(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#0b0b0b",
-        color: "#fff",
-        padding: 28,
-        fontFamily: "Inter, system-ui",
-      }}
-    >
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <h1 style={{ margin: 0, fontWeight: 1000 }}>Business Dashboard</h1>
-        <p style={{ color: "rgba(255,255,255,0.7)", marginTop: 6 }}>
-          {verified
-            ? "Verified business account. Ledger and OCR are ready."
-            : "Business verification pending. Complete KYC to unlock ledger and OCR."}
-        </p>
+    <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: "#0f172a" }}>Business Dashboard</div>
+            <div style={{ color: "#475569" }}>
+              Instant financial clarity for your ledger and OCR drafts.
+            </div>
+          </div>
+          <Link
+            to="/business/ocr"
+            style={{
+              color: "#0f172a",
+              fontWeight: 800,
+              border: "1px solid #cbd5e1",
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "#ffffff",
+              textDecoration: "none",
+            }}
+          >
+            View OCR
+          </Link>
+        </div>
 
-        {!verified ? (
-          <div style={{ marginTop: 16, padding: 16, borderRadius: 12, border: "1px solid #334155", background: "#111827" }}>
-            Finish verification to use the ledger.
+        {!canView ? (
+          <div style={{ padding: 16, borderRadius: 12, border: "1px solid #e2e8f0", background: "#ffffff", color: "#0f172a", fontWeight: 700 }}>
+            {gateMessage}
           </div>
         ) : (
           <>
             {error && (
-              <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #fecdd3", background: "#7f1d1d", color: "#fff", fontWeight: 700 }}>
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #fecdd3", background: "#fff1f2", color: "#b91c1c", fontWeight: 700 }}>
                 {error}
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))", gap: 12, marginTop: 16 }}>
-              <SummaryCard label="Total receivable" value={currency(summary.receivable)} />
-              <SummaryCard label="Total payable" value={currency(summary.payable)} />
-              <SummaryCard label="Net" value={currency(summary.net)} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 12 }}>
+              <SummaryCard label="Total receivable" value={formatMoney(summary.receivable)} loading={loading} />
+              <SummaryCard label="Total payable" value={formatMoney(summary.payable)} loading={loading} />
+              <SummaryCard label="Net balance" value={formatMoney(summary.net)} loading={loading} />
+              <SummaryCard label="Pending OCR drafts" value={summary.pending_ocr_drafts} loading={loading} />
+            </div>
+            <div style={{ color: "#94a3b8", fontSize: 12, fontWeight: 700 }}>
+              {summarySource === "api" ? "Using summary endpoint" : "Summary derived from ledger and OCR drafts"}
             </div>
 
-            <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <div style={{ fontWeight: 900, fontSize: 20 }}>Transactions</div>
-              <button
-                type="button"
-                onClick={() => setModalOpen(true)}
-                style={{
-                  border: "1px solid #1f2937",
-                  background: "#0f172a",
-                  color: "#e2e8f0",
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-              >
-                Add transaction
-              </button>
-            </div>
-
-            {loading ? (
-              <div style={{ marginTop: 12, borderRadius: 12, background: "#111827", border: "1px solid #1f2937", height: 160 }} />
-            ) : filteredLedger.length === 0 ? (
-              <div style={{ marginTop: 12, padding: 16, borderRadius: 12, border: "1px dashed #334155", background: "#0f172a" }}>
-                No transactions yet. Add one manually or confirm OCR.
+            <div style={{ border: "1px solid #e2e8f0", background: "#ffffff", borderRadius: 14, padding: 14, display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: 18, color: "#0f172a" }}>Latest ledger activity</div>
+                  <div style={{ color: "#475569" }}>Most recent five transactions.</div>
+                </div>
+                <Link
+                  to="/business/ledger"
+                  style={{
+                    color: "#0f172a",
+                    fontWeight: 800,
+                    border: "1px solid #cbd5e1",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    textDecoration: "none",
+                    background: "#f8fafc",
+                  }}
+                >
+                  View all ledger
+                </Link>
               </div>
-            ) : (
-              <div style={{ marginTop: 12 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", background: "#0f172a", borderRadius: 12, overflow: "hidden" }}>
-                  <thead style={{ background: "#111827", color: "#cbd5e1" }}>
-                    <tr>
-                      <th style={th}>Date</th>
-                      <th style={th}>Customer</th>
-                      <th style={th}>Amount</th>
-                      <th style={th}>Type</th>
-                      <th style={th}>Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLedger.map((tx) => {
-                      const isCredit = (tx.transaction_type || "").toUpperCase() === "CREDIT" || (tx.transaction_type || "").toUpperCase() === "LENT";
-                      return (
-                        <tr key={tx.id} style={{ borderBottom: "1px solid #1f2937" }}>
-                          <td style={td}>{new Date(tx.transaction_date).toLocaleDateString()}</td>
-                          <td style={td}>{tx.customer_name || tx.merchant || "Unknown"}</td>
-                          <td style={{ ...td, color: isCredit ? "#4ade80" : "#f87171" }}>{currency(tx.amount)}</td>
-                          <td style={td}>{tx.transaction_type}</td>
-                          <td style={td}>{tx.source}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
 
-            <div style={{ marginTop: 24 }}>
-              <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>Customers</div>
-              {customers.length === 0 ? (
-                <div style={{ padding: 12, borderRadius: 12, border: "1px dashed #334155", background: "#0f172a" }}>
-                  No customers yet. Add a transaction to see balances.
+              {loading ? (
+                <LedgerPlaceholder />
+              ) : recentLedger.length === 0 ? (
+                <div style={{ padding: 14, borderRadius: 12, border: "1px dashed #cbd5e1", color: "#475569", textAlign: "center" }}>
+                  No transactions yet. Confirm OCR receipts or add entries in your ledger.
                 </div>
               ) : (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {customers.map((c) => (
-                    <div
-                      key={c.customer_name}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr auto",
-                        alignItems: "center",
-                        padding: 12,
-                        borderRadius: 12,
-                        border: "1px solid #1f2937",
-                        background: "#0f172a",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => setSelectedCustomer(c.customer_name)}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 800 }}>{c.customer_name}</div>
-                      </div>
-                      <div style={{ fontWeight: 900, color: Number(c.balance) >= 0 ? "#4ade80" : "#f87171" }}>
-                        {currency(c.balance)}
-                      </div>
-                    </div>
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+                  <LedgerHeader />
+                  {recentLedger.map((tx) => (
+                    <LedgerRow key={tx.id} tx={tx} />
                   ))}
                 </div>
               )}
@@ -221,148 +216,29 @@ export default function BusinessDashboard() {
           </>
         )}
       </div>
+    </div>
+  );
+}
 
-      {modalOpen && (
-        <AddTransactionModal
-          onClose={() => setModalOpen(false)}
-          onSubmit={handleCreate}
-          saving={saving}
-        />
+function SummaryCard({ label, value, loading }) {
+  return (
+    <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, display: "grid", gap: 6 }}>
+      <div style={{ color: "#475569", fontWeight: 700, fontSize: 13 }}>{label}</div>
+      {loading ? (
+        <div style={{ height: 26, borderRadius: 8, background: "#e2e8f0" }} />
+      ) : (
+        <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{value}</div>
       )}
     </div>
   );
 }
 
-function SummaryCard({ label, value }) {
+function LedgerPlaceholder() {
   return (
-    <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 14, padding: 14 }}>
-      <div style={{ color: "#cbd5e1", fontSize: 13 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 900 }}>{value}</div>
+    <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#f8fafc", padding: 12, display: "grid", gap: 8 }}>
+      {[...Array(4)].map((_, idx) => (
+        <div key={idx} style={{ height: 18, borderRadius: 8, background: "#e2e8f0" }} />
+      ))}
     </div>
   );
 }
-
-function AddTransactionModal({ onClose, onSubmit, saving }) {
-  const [customer, setCustomer] = useState("");
-  const [amount, setAmount] = useState("");
-  const [type, setType] = useState("CREDIT");
-  const [date, setDate] = useState("");
-  const [note, setNote] = useState("");
-
-  const isValid = customer && amount && date;
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!isValid || saving) return;
-    onSubmit({
-      customer_name: customer,
-      amount,
-      transaction_type: type,
-      transaction_date: date,
-      note,
-    });
-  };
-
-  return (
-    <div style={modalOverlay}>
-      <div style={modalCard}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>Add transaction</div>
-          <button type="button" onClick={onClose} style={closeBtn}>
-            ×
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-          <label style={labelStyle}>
-            Customer name
-            <input style={inputStyle} value={customer} onChange={(e) => setCustomer(e.target.value)} required />
-          </label>
-          <label style={labelStyle}>
-            Amount
-            <input style={inputStyle} type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-          </label>
-          <label style={labelStyle}>
-            Date
-            <input style={inputStyle} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-          </label>
-          <label style={labelStyle}>
-            Type
-            <select style={inputStyle} value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="CREDIT">Credit (customer owes you)</option>
-              <option value="DEBIT">Debit (you owe customer)</option>
-            </select>
-          </label>
-          <label style={labelStyle}>
-            Note (optional)
-            <textarea style={{ ...inputStyle, minHeight: 80 }} value={note} onChange={(e) => setNote(e.target.value)} />
-          </label>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button type="button" onClick={onClose} style={secondaryBtn}>
-              Cancel
-            </button>
-            <button type="submit" disabled={!isValid || saving} style={primaryBtn(isValid && !saving)}>
-              {saving ? "Saving..." : "Save"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-const th = { textAlign: "left", padding: "10px 12px", fontWeight: 800, fontSize: 13 };
-const td = { padding: "10px 12px", fontSize: 13, color: "#cbd5e1" };
-const modalOverlay = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.6)",
-  display: "grid",
-  placeItems: "center",
-  zIndex: 100,
-};
-const modalCard = {
-  width: "min(520px, 92vw)",
-  background: "#0b1220",
-  border: "1px solid #1f2937",
-  borderRadius: 14,
-  padding: 16,
-  color: "#e2e8f0",
-  display: "grid",
-  gap: 12,
-};
-const labelStyle = { display: "grid", gap: 6, fontWeight: 800 };
-const closeBtn = {
-  border: "none",
-  background: "transparent",
-  color: "#e2e8f0",
-  fontSize: 20,
-  cursor: "pointer",
-};
-const secondaryBtn = {
-  border: "1px solid #334155",
-  background: "transparent",
-  color: "#e2e8f0",
-  padding: "10px 12px",
-  borderRadius: 10,
-  fontWeight: 800,
-  cursor: "pointer",
-};
-const primaryBtn = (enabled) => ({
-  border: "none",
-  background: enabled ? "#0ea5e9" : "#334155",
-  color: "#0b0b0b",
-  padding: "10px 12px",
-  borderRadius: 10,
-  fontWeight: 900,
-  cursor: enabled ? "pointer" : "not-allowed",
-});
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid #1f2937",
-  background: "#0f172a",
-  color: "#e2e8f0",
-  fontSize: 14,
-  fontWeight: 700,
-};
