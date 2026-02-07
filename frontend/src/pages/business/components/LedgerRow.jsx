@@ -1,4 +1,4 @@
-const gridTemplate = "1.05fr 1fr 1fr 0.8fr 0.9fr 1fr";
+const gridTemplate = "1.05fr 1fr 1fr 0.8fr 0.9fr 1.3fr";
 
 export const formatMoney = (value) => {
   const num = Number(value || 0);
@@ -36,11 +36,21 @@ export function LedgerHeader() {
   );
 }
 
-export function LedgerRow({ tx, onSettle, settling = false, onSelectCustomer }) {
+export function LedgerRow({
+  tx,
+  onSettle,
+  settling = false,
+  onSelectCustomer,
+  invoice,
+  onGenerateInvoice,
+  generatingInvoice = false,
+  onViewInvoice,
+}) {
   const isCredit = (tx.transaction_type || "").toUpperCase() === "CREDIT";
   const settled = tx.is_settled === true;
   const customer = tx.customer_name || tx.merchant || "Unknown";
   const settledLabel = tx.settled_at ? `Settled ${formatDate(tx.settled_at)}` : "Settled";
+  const invoiceData = invoice || tx.invoice;
 
   return (
     <div
@@ -105,6 +115,41 @@ export function LedgerRow({ tx, onSettle, settling = false, onSelectCustomer }) 
             }}
           >
             {settling ? "Marking..." : "Mark settled"}
+          </button>
+        )}
+        {settled && !invoiceData && onGenerateInvoice && (
+          <button
+            type="button"
+            onClick={() => onGenerateInvoice(tx)}
+            disabled={generatingInvoice}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 10,
+              border: "1px solid #0f172a",
+              background: "#ffffff",
+              color: "#0f172a",
+              fontWeight: 800,
+              cursor: generatingInvoice ? "not-allowed" : "pointer",
+            }}
+          >
+            {generatingInvoice ? "Generating..." : "Generate invoice"}
+          </button>
+        )}
+        {settled && invoiceData && onViewInvoice && (
+          <button
+            type="button"
+            onClick={() => onViewInvoice(invoiceData, tx)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 10,
+              border: "1px solid #0f172a",
+              background: "#0f172a",
+              color: "#ffffff",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            View invoice
           </button>
         )}
       </div>

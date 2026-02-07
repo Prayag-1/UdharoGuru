@@ -8,4 +8,5 @@ urlpatterns = [
     path("status/", BusinessStatusView.as_view(), name="business-status"),
     path("ocr/", include("ocr.business_urls")),
     path("ledger/", include("ocr.ledger_urls")),
+    path("invoices/", include("ocr.invoice_urls")),
 ]

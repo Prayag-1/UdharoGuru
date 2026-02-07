@@ -44,6 +44,12 @@ export default function ExpensesView() {
   const [detailTx, setDetailTx] = useState(null);
   const [savingExpense, setSavingExpense] = useState(false);
   const [savingSettle, setSavingSettle] = useState(false);
+  const [defaultSplit, setDefaultSplit] = useState(() => {
+    const saved = window.localStorage.getItem("defaultSplitPercent");
+    const val = Number(saved);
+    return Number.isFinite(val) && val > 0 && val < 100 ? val : 50;
+  });
+  const [prefillExpense, setPrefillExpense] = useState(null);
 
   const normalizedConnections = useMemo(() => connections.map(normalizeConnection), [connections]);
 
@@ -114,18 +120,27 @@ export default function ExpensesView() {
     return conn?.email || conn?.full_name || `User ${id}`;
   };
 
-  const handleSaveExpense = async ({ description, amount, borrower, date }) => {
+  const handleSaveExpense = async ({ description, totalAmount, splits, date }) => {
     setSavingExpense(true);
     try {
-      const personName = labelForConnection(borrower);
-      await createPrivateTransaction({
-        person_name: personName,
-        amount,
-        transaction_type: "LENT",
-        transaction_date: date,
-        note: description || null,
+      const payloads = splits.map((split) => {
+        const personName = labelForConnection(split.id);
+        const noteParts = [
+          description || null,
+          `Split ${split.percent}% them / ${100 - split.percent}% you`,
+          `Total ${formatCurrency(totalAmount)}`,
+        ].filter(Boolean);
+        return createPrivateTransaction({
+          person_name: personName,
+          amount: Number(split.amount.toFixed(2)),
+          transaction_type: "LENT",
+          transaction_date: date,
+          note: noteParts.join(" • "),
+        });
       });
+      await Promise.all(payloads);
       setShowAdd(false);
+      setPrefillExpense(null);
       await refreshTransactions();
     } finally {
       setSavingExpense(false);
@@ -153,10 +168,13 @@ export default function ExpensesView() {
   return (
     <div className="dashboard-shell">
       <div className="section-heading" style={{ marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 900 }}>All expenses</div>
-          <div className="muted">Splitwise-style feed of your private transactions</div>
-        </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900 }}>All expenses</div>
+            <div className="muted">Splitwise-style feed of your private transactions</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Default split: them {defaultSplit}% / you {100 - defaultSplit}% (applied to new expenses)
+            </div>
+          </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="button secondary" type="button" onClick={() => setShowSettle(true)}>
             Settle up
@@ -217,6 +235,12 @@ export default function ExpensesView() {
         onSave={handleSaveExpense}
         connections={normalizedConnections}
         submitting={savingExpense}
+        defaultSplit={defaultSplit}
+        onSaveDefaultSplit={(percent) => {
+          setDefaultSplit(percent);
+          window.localStorage.setItem("defaultSplitPercent", String(percent));
+        }}
+        prefill={prefillExpense}
       />
 
       <SettleUpModal
@@ -228,7 +252,20 @@ export default function ExpensesView() {
         submitting={savingSettle}
       />
 
-      <ExpenseDetailModal open={Boolean(detailTx)} onClose={() => setDetailTx(null)} expense={detailTx} />
+      <ExpenseDetailModal
+        open={Boolean(detailTx)}
+        onClose={() => setDetailTx(null)}
+        expense={detailTx}
+        onSplit={() => {
+          if (!detailTx) return;
+          setPrefillExpense({
+            description: detailTx.note || detailTx.person_name,
+            amount: detailTx.amount,
+            date: detailTx.transaction_date,
+          });
+          setShowAdd(true);
+        }}
+      />
     </div>
   );
 }

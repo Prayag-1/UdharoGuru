@@ -14,7 +14,7 @@ from .ledger_serializers import (
     BusinessTransactionSerializer,
     CustomerBalanceSerializer,
 )
-from .models import BusinessTransaction, OCRDocument
+from .models import BusinessTransaction, Invoice, OCRDocument
 
 
 def _normalize_customer(tx: BusinessTransaction):
@@ -25,7 +25,11 @@ class BusinessLedgerListView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessAccount]
 
     def get(self, request):
-        qs = BusinessTransaction.objects.filter(owner=request.user).order_by("is_settled", "-transaction_date", "-created_at")
+        qs = (
+            BusinessTransaction.objects.filter(owner=request.user)
+            .select_related("invoice")
+            .order_by("is_settled", "-transaction_date", "-created_at")
+        )
         data = BusinessTransactionSerializer(qs, many=True).data
         return Response(data, status=200)
 
@@ -119,6 +123,7 @@ class BusinessCustomerDetailView(APIView):
         qs = (
             BusinessTransaction.objects.filter(owner=request.user)
             .filter(customer_name=name)
+            .select_related("invoice")
             .order_by("is_settled", "-transaction_date", "-created_at")
         )
         data = BusinessTransactionSerializer(qs, many=True).data

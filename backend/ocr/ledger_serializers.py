@@ -2,10 +2,12 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from .models import BusinessTransaction
+from .models import BusinessTransaction, Invoice
 
 
 class BusinessTransactionSerializer(serializers.ModelSerializer):
+    invoice = serializers.SerializerMethodField()
+
     class Meta:
         model = BusinessTransaction
         fields = (
@@ -20,8 +22,15 @@ class BusinessTransactionSerializer(serializers.ModelSerializer):
             "is_settled",
             "settled_at",
             "created_at",
+            "invoice",
         )
         read_only_fields = ("id", "source", "created_at", "is_settled", "settled_at", "merchant")
+
+    def get_invoice(self, obj):
+        inv = getattr(obj, "invoice", None)
+        if not inv:
+            return None
+        return InvoiceSerializer(inv).data
 
 
 class BusinessTransactionCreateSerializer(serializers.Serializer):
@@ -42,3 +51,19 @@ class BusinessTransactionCreateSerializer(serializers.Serializer):
 class CustomerBalanceSerializer(serializers.Serializer):
     customer_name = serializers.CharField()
     balance = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    transaction_id = serializers.IntegerField(source="transaction.id", read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = (
+            "id",
+            "invoice_number",
+            "issued_at",
+            "total_amount",
+            "customer_name",
+            "transaction_id",
+        )
+        read_only_fields = fields

@@ -101,3 +101,21 @@ class BusinessTransaction(models.Model):
 
     def __str__(self):
         return f"{self.owner.email} - {self.transaction_type} {self.amount} for {self.merchant}"
+
+
+class Invoice(models.Model):
+    business = models.ForeignKey(User, on_delete=models.CASCADE, related_name="invoices")
+    transaction = models.OneToOneField(BusinessTransaction, on_delete=models.CASCADE, related_name="invoice")
+    invoice_number = models.CharField(max_length=64)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    customer_name = models.CharField(max_length=255)
+
+    class Meta:
+        ordering = ["-issued_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["business", "invoice_number"], name="unique_invoice_per_business_number"),
+        ]
+
+    def __str__(self):
+        return f"Invoice {self.invoice_number} for {self.business.email}"

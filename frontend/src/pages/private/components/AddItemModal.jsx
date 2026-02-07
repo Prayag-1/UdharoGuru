@@ -61,7 +61,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
         </div>
 
         <div className="form-grid">
-          <label className="label">
+          <label className="label" title="Who will keep this item until it is returned">
             Borrower
             <select
               className="select"
@@ -84,7 +84,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
             </select>
           </label>
 
-          <label className="label">
+          <label className="label" title="Give the item a name you’ll recognize later">
             Item name
             <input
               className="input"
@@ -94,7 +94,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
             />
           </label>
 
-          <label className="label">
+          <label className="label" title="Add quick notes like color, brand, or condition">
             Description
             <textarea
               className="textarea"
@@ -104,7 +104,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
             />
           </label>
 
-          <label className="label">
+          <label className="label" title="When do you expect it back?">
             Expected return date
             <input
               className="input"
@@ -114,7 +114,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
             />
           </label>
 
-          <label className="label">
+          <label className="label" title="We’ll nudge them after this many days">
             Reminder interval (days)
             <input
               className="input"

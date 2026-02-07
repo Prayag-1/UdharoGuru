@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import "../../private/PrivateDashboard.css";
 
@@ -7,13 +7,23 @@ const today = () => new Date().toISOString().slice(0, 10);
 const formatCurrency = (value) =>
   Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
 
-export default function AddExpenseModal({ open, onClose, onSave, connections = [], submitting }) {
+export default function AddExpenseModal({
+  open,
+  onClose,
+  onSave,
+  connections = [],
+  submitting,
+  defaultSplit = 50,
+  onSaveDefaultSplit,
+  prefill,
+}) {
   const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [borrower, setBorrower] = useState("");
+  const [totalAmount, setTotalAmount] = useState("");
   const [date, setDate] = useState(today());
   const [step, setStep] = useState(1);
   const [error, setError] = useState(null);
+  const [splits, setSplits] = useState([]);
+  const [saveAsDefault, setSaveAsDefault] = useState(true);
 
   const borrowerOptions = useMemo(
     () =>
@@ -27,13 +37,46 @@ export default function AddExpenseModal({ open, onClose, onSave, connections = [
     [connections]
   );
 
+  const evenSplit = (ids) => {
+    if (!ids.length) return [];
+    const base = Math.floor((100 / ids.length) * 100) / 100;
+    let remainder = 100 - base * ids.length;
+    return ids.map((id) => {
+      const add = remainder > 0 ? 0.01 : 0;
+      if (remainder > 0) remainder = Math.max(0, remainder - 0.01);
+      return { id, percent: Math.max(1, base + add) };
+    });
+  };
+
+  const recalcAmounts = (splitArr, total) =>
+    splitArr.map((s) => ({
+      ...s,
+      amount: total ? Number(total) * (s.percent / 100) : 0,
+    }));
+
+  useEffect(() => {
+    if (!open) return;
+    const ids = connections.slice(0, 1).map((c) => c.id);
+    const initialSplits = ids.length ? [{ id: ids[0], percent: defaultSplit }] : [];
+    setSplits(recalcAmounts(initialSplits, totalAmount));
+  }, [open, connections, defaultSplit, totalAmount]);
+
+  useEffect(() => {
+    if (!prefill || !open) return;
+    setDescription(prefill.description || "");
+    setTotalAmount(prefill.amount || "");
+    setDate(prefill.date || today());
+    setSplits((prev) => recalcAmounts(prev.length ? prev : [], prefill.amount || totalAmount));
+  }, [prefill, open, totalAmount]);
+
   const reset = () => {
     setDescription("");
-    setAmount("");
-    setBorrower("");
+    setTotalAmount("");
     setDate(today());
     setStep(1);
     setError(null);
+    setSaveAsDefault(true);
+    setSplits([]);
   };
 
   const handleNext = (e) => {
@@ -43,12 +86,17 @@ export default function AddExpenseModal({ open, onClose, onSave, connections = [
       setError("Description is required.");
       return;
     }
-    if (!amount || Number(amount) <= 0) {
+    if (!totalAmount || Number(totalAmount) <= 0) {
       setError("Amount must be greater than zero.");
       return;
     }
-    if (!borrower) {
-      setError("Select a borrower.");
+    if (!splits.length) {
+      setError("Select at least one friend to split with.");
+      return;
+    }
+    const totalPercent = splits.reduce((s, x) => s + Number(x.percent || 0), 0);
+    if (Math.round(totalPercent) !== 100) {
+      setError("Split percentages must add up to 100%.");
       return;
     }
     setStep(2);
@@ -59,10 +107,13 @@ export default function AddExpenseModal({ open, onClose, onSave, connections = [
     try {
       await onSave({
         description: description.trim(),
-        amount: Number(amount),
-        borrower,
+        totalAmount: Number(totalAmount),
         date,
+        splits: recalcAmounts(splits, totalAmount),
       });
+      if (saveAsDefault && onSaveDefaultSplit && splits.length === 1) {
+        onSaveDefaultSplit(splits[0].percent);
+      }
       reset();
     } catch (err) {
       setError(err?.message || "Unable to save expense.");
@@ -96,27 +147,82 @@ export default function AddExpenseModal({ open, onClose, onSave, connections = [
                 type="number"
                 min="0"
                 step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                value={totalAmount}
+                onChange={(e) => setTotalAmount(e.target.value)}
                 required
               />
             </label>
-            <label className="label">
-              Borrower
-              <select className="select" value={borrower} onChange={(e) => setBorrower(e.target.value)} required>
-                <option value="">Select a friend</option>
-                {borrowerOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="label">
+              Split with friends
+              <div className="muted" style={{ fontSize: 12 }}>
+                Choose who shares this expense and set custom ratios.
+              </div>
+            </div>
+            <div className="list" style={{ maxHeight: 220, overflow: "auto" }}>
+              {borrowerOptions.map((opt) => {
+                const existing = splits.find((s) => String(s.id) === String(opt.id));
+                return (
+                  <div key={opt.id} className="row-card" style={{ gridTemplateColumns: "auto 1fr 120px" }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(existing)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        let ids = splits.map((s) => s.id);
+                        if (checked) {
+                          ids = [...ids, opt.id];
+                          const even = evenSplit(ids);
+                          setSplits(recalcAmounts(even, totalAmount));
+                        } else {
+                          ids = ids.filter((id) => id !== opt.id);
+                          const even = evenSplit(ids);
+                          setSplits(recalcAmounts(even, totalAmount));
+                        }
+                      }}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{opt.label}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={existing ? existing.percent : ""}
+                        placeholder="%"
+                        disabled={!existing}
+                        onChange={(e) => {
+                          const val = Math.min(99, Math.max(1, Number(e.target.value) || 0));
+                          setSplits((prev) => {
+                            const next = prev.map((s) =>
+                              String(s.id) === String(opt.id) ? { ...s, percent: val } : s
+                            );
+                            return recalcAmounts(next, totalAmount);
+                          });
+                        }}
+                        style={{ width: 80 }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             <label className="label">
               Date
               <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </label>
             <div className="label">Paid by: You</div>
+            <label className="flex-row" style={{ fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={saveAsDefault}
+                onChange={(e) => setSaveAsDefault(e.target.checked)}
+                style={{ width: 16, height: 16 }}
+              />
+              Save this split as default when only one friend is selected
+            </label>
             {error && <div className="error-text">{error}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button className="button secondary" type="button" onClick={() => { reset(); onClose(); }}>
@@ -131,9 +237,21 @@ export default function AddExpenseModal({ open, onClose, onSave, connections = [
           <div className="form-grid">
             <div className="section-card" style={{ background: "#f9fafb", borderStyle: "dashed" }}>
               <div className="card-title">You paid for</div>
-              <div style={{ marginTop: 6, fontWeight: 800 }}>{borrowerOptions.find((b) => String(b.id) === String(borrower))?.label}</div>
+              <div className="list" style={{ marginTop: 6 }}>
+                {splits.map((s) => {
+                  const friend = borrowerOptions.find((b) => String(b.id) === String(s.id));
+                  return (
+                    <div key={s.id} style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div>{friend?.label || `Friend ${s.id}`}</div>
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        {s.percent}% ({formatCurrency(s.amount)})
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               <div className="muted" style={{ marginTop: 6 }}>{description}</div>
-              <div className="currency" style={{ marginTop: 10 }}>{formatCurrency(amount)}</div>
+              <div className="currency" style={{ marginTop: 10 }}>{formatCurrency(totalAmount)}</div>
               <div className="muted" style={{ marginTop: 6 }}>Date: {date}</div>
             </div>
             {error && <div className="error-text">{error}</div>}

@@ -18,7 +18,7 @@ export default function ReturnedItemCard({ loan, borrowerLabel }) {
         {borrowerLabel}
       </div>
       <div style={{ display: "grid", gap: 4, marginTop: 8, fontSize: 14 }}>
-        <span>Lent on: <strong>{formatDate(loan.lent_date)}</strong></span>
+        <span title="The day you handed the item out">Lent on: <strong>{formatDate(loan.lent_date)}</strong></span>
         <span>Expected return: <strong>{loan.expected_return_date ? formatDate(loan.expected_return_date) : "Not set"}</strong></span>
         {loan.item_description && <span className="muted">{loan.item_description}</span>}
       </div>

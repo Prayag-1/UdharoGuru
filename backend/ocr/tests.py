@@ -6,7 +6,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from ocr.models import BusinessTransaction, OCRDocument
+from ocr.models import BusinessTransaction, Invoice, OCRDocument
 from private.models import Group, GroupMember
 
 
@@ -141,6 +141,123 @@ class BusinessLedgerSettlementTests(TestCase):
 
         res = self.client.patch(f"/api/business/ledger/{tx.id}/settle/")
         self.assertEqual(res.status_code, 403)
+
+
+class InvoiceGenerationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.owner = User.objects.create_user(
+            email="invoice@example.com",
+            full_name="Invoicing Biz",
+            account_type="BUSINESS",
+            password="pass12345",
+        )
+        self.owner.kyc_status = "APPROVED"
+        self.owner.business_status = "APPROVED"
+        self.owner.save(update_fields=["kyc_status", "business_status"])
+
+        self.other_owner = User.objects.create_user(
+            email="other-invoice@example.com",
+            full_name="Other Biz",
+            account_type="BUSINESS",
+            password="pass12345",
+        )
+        self.other_owner.kyc_status = "APPROVED"
+        self.other_owner.business_status = "APPROVED"
+        self.other_owner.save(update_fields=["kyc_status", "business_status"])
+
+        self.private_user = User.objects.create_user(
+            email="private-invoice@example.com",
+            full_name="Private Person",
+            account_type="PRIVATE",
+            password="pass12345",
+        )
+
+    def create_tx(self, **kwargs):
+        defaults = {
+            "owner": self.owner,
+            "merchant": "Invoice Store",
+            "customer_name": "Jane Customer",
+            "amount": "55.00",
+            "transaction_type": "CREDIT",
+            "transaction_date": date.today(),
+            "source": "MANUAL",
+            "is_settled": True,
+        }
+        defaults.update(kwargs)
+        return BusinessTransaction.objects.create(**defaults)
+
+    def test_generate_invoice_for_settled_transaction(self):
+        tx = self.create_tx()
+        self.client.force_authenticate(self.owner)
+
+        res = self.client.post(f"/api/business/invoices/{tx.id}/generate/")
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        self.assertTrue(Invoice.objects.filter(transaction=tx).exists())
+        self.assertEqual(data["transaction_id"], tx.id)
+        self.assertEqual(str(data["total_amount"]), "55.00")
+
+    def test_cannot_generate_for_unsettled(self):
+        tx = self.create_tx(is_settled=False)
+        self.client.force_authenticate(self.owner)
+
+        res = self.client.post(f"/api/business/invoices/{tx.id}/generate/")
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(Invoice.objects.filter(transaction=tx).exists())
+
+    def test_cannot_generate_twice(self):
+        tx = self.create_tx()
+        Invoice.objects.create(
+            business=self.owner,
+            transaction=tx,
+            invoice_number="INV-1",
+            total_amount=tx.amount,
+            customer_name=tx.customer_name,
+        )
+        self.client.force_authenticate(self.owner)
+
+        res = self.client.post(f"/api/business/invoices/{tx.id}/generate/")
+        self.assertEqual(res.status_code, 400)
+
+    def test_cannot_generate_for_other_owner(self):
+        tx = self.create_tx(owner=self.other_owner)
+        self.client.force_authenticate(self.owner)
+
+        res = self.client.post(f"/api/business/invoices/{tx.id}/generate/")
+        self.assertEqual(res.status_code, 404)
+
+    def test_private_user_blocked(self):
+        tx = self.create_tx()
+        self.client.force_authenticate(self.private_user)
+
+        res = self.client.post(f"/api/business/invoices/{tx.id}/generate/")
+        self.assertEqual(res.status_code, 403)
+
+    def test_invoice_list_only_own(self):
+        mine = self.create_tx()
+        theirs = self.create_tx(owner=self.other_owner, customer_name="Other Cust")
+        Invoice.objects.create(
+            business=self.owner,
+            transaction=mine,
+            invoice_number="INV-MINE",
+            total_amount=mine.amount,
+            customer_name=mine.customer_name,
+        )
+        Invoice.objects.create(
+            business=self.other_owner,
+            transaction=theirs,
+            invoice_number="INV-THEIRS",
+            total_amount=theirs.amount,
+            customer_name=theirs.customer_name,
+        )
+
+        self.client.force_authenticate(self.owner)
+        res = self.client.get("/api/business/invoices/")
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["invoice_number"], "INV-MINE")
 
 
 class GroupPersistenceTests(TestCase):

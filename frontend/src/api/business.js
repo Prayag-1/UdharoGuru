@@ -30,6 +30,11 @@ export const addBusinessLedgerTransaction = (payload) =>
 export const settleBusinessTransaction = (id) =>
   api.patch(`business/ledger/${id}/settle/`);
 
+export const generateBusinessInvoice = (transactionId) =>
+  api.post(`business/invoices/${transactionId}/generate/`);
+
+export const listBusinessInvoices = () => api.get("business/invoices/");
+
 export const getBusinessCustomerBalances = () => api.get("business/ledger/customers/");
 
 export const getBusinessCustomerTransactions = (name) =>

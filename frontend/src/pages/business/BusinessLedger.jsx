@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { getBusinessCustomerTransactions, getBusinessLedger, settleBusinessTransaction } from "../../api/business";
+import {
+  generateBusinessInvoice,
+  getBusinessCustomerTransactions,
+  getBusinessLedger,
+  listBusinessInvoices,
+  settleBusinessTransaction,
+} from "../../api/business";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessGate } from "../../hooks/useBusinessGate";
 import { LedgerHeader, LedgerRow, formatMoney } from "./components/LedgerRow";
@@ -19,6 +25,9 @@ export default function BusinessLedger() {
   const [customerTx, setCustomerTx] = useState([]);
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState("");
+  const [invoiceMap, setInvoiceMap] = useState({});
+  const [invoiceView, setInvoiceView] = useState(null);
+  const [invoiceBusyId, setInvoiceBusyId] = useState(null);
   const hasFetched = useRef(false);
 
   const canView = user && user.account_type === "BUSINESS" && user.business_status === "APPROVED";
@@ -33,8 +42,26 @@ export default function BusinessLedger() {
     setError("");
     setActionError("");
     try {
-      const { data } = await getBusinessLedger();
-      setLedger(Array.isArray(data) ? data : data?.results || []);
+      const [ledgerRes, invoiceRes] = await Promise.all([
+        getBusinessLedger(),
+        listBusinessInvoices().catch(() => null),
+      ]);
+
+      const ledgerRows = Array.isArray(ledgerRes.data) ? ledgerRes.data : ledgerRes.data?.results || [];
+      const invoiceRows = invoiceRes ? (Array.isArray(invoiceRes.data) ? invoiceRes.data : invoiceRes.data?.results || []) : [];
+      const map = {};
+      invoiceRows.forEach((inv) => {
+        if (inv?.transaction_id) {
+          map[inv.transaction_id] = inv;
+        }
+      });
+      setInvoiceMap(map);
+      setLedger(
+        ledgerRows.map((row) => ({
+          ...row,
+          invoice: row.invoice || map[row.id],
+        }))
+      );
     } catch (err) {
       setError("Unable to load ledger right now.");
       setLedger([]);
@@ -58,12 +85,37 @@ export default function BusinessLedger() {
     if (!updatedTx || !updatedTx.id) return;
     setLedger((prev) => prev.map((row) => (row.id === updatedTx.id ? updatedTx : row)));
     setCustomerTx((prev) => prev.map((row) => (row.id === updatedTx.id ? updatedTx : row)));
+    if (updatedTx.invoice) {
+      setInvoiceMap((prev) => ({ ...prev, [updatedTx.id]: updatedTx.invoice }));
+    }
   };
 
   const requestSettle = (tx) => {
     if (!tx || tx.is_settled || settlingId) return;
     setActionError("");
     setConfirmTx(tx);
+  };
+
+  const handleGenerateInvoice = async (tx) => {
+    if (!tx || !tx.is_settled || invoiceBusyId) return;
+    setActionError("");
+    setInvoiceBusyId(tx.id);
+    try {
+      const { data } = await generateBusinessInvoice(tx.id);
+      const updated = { ...tx, invoice: data };
+      syncTransactionUpdate(updated);
+    } catch (err) {
+      setActionError("Unable to generate invoice right now.");
+    } finally {
+      setInvoiceBusyId(null);
+    }
+  };
+
+  const openInvoiceView = (tx) => {
+    if (!tx) return;
+    const invoice = tx.invoice || invoiceMap[tx.id];
+    if (!invoice) return;
+    setInvoiceView({ invoice, tx });
   };
 
   const performSettlement = async () => {
@@ -103,6 +155,8 @@ export default function BusinessLedger() {
     setCustomerError("");
     setCustomerLoading(false);
   };
+
+  const closeInvoiceView = () => setInvoiceView(null);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
@@ -181,6 +235,10 @@ export default function BusinessLedger() {
                     onSettle={requestSettle}
                     settling={settlingId === tx.id}
                     onSelectCustomer={openCustomerDetail}
+                    invoice={tx.invoice || invoiceMap[tx.id]}
+                    onGenerateInvoice={handleGenerateInvoice}
+                    generatingInvoice={invoiceBusyId === tx.id}
+                    onViewInvoice={() => openInvoiceView(tx)}
                   />
                 ))}
               </div>
@@ -205,6 +263,13 @@ export default function BusinessLedger() {
         onClose={closeCustomerDetail}
         onSettle={requestSettle}
         settlingId={settlingId}
+      />
+      <InvoicePreview
+        open={!!invoiceView}
+        invoice={invoiceView?.invoice}
+        tx={invoiceView?.tx}
+        businessName={user?.full_name || user?.email || "Your business"}
+        onClose={closeInvoiceView}
       />
     </div>
   );
@@ -307,6 +372,68 @@ function CustomerDetailPanel({ name, open, transactions = [], loading, error, on
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function InvoicePreview({ open, invoice, tx, businessName, onClose }) {
+  if (!open || !invoice) return null;
+
+  const issued = invoice.issued_at ? new Date(invoice.issued_at) : null;
+  const issuedLabel = issued ? issued.toLocaleString() : "--";
+  const txDate = tx?.transaction_date || tx?.created_at;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", display: "grid", placeItems: "center", padding: 16, zIndex: 25 }}>
+      <div style={{ width: "min(720px, 100%)", background: "#ffffff", borderRadius: 16, padding: 22, border: "1px solid #cbd5e1", boxShadow: "0 16px 40px rgba(15,23,42,0.22)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a" }}>Invoice</div>
+            <div style={{ color: "#475569", fontWeight: 700 }}>Proof of payment</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#ffffff", color: "#0f172a", fontWeight: 800, cursor: "pointer" }}
+          >
+            Close
+          </button>
+        </div>
+
+        <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 16, display: "grid", gap: 12, background: "#f8fafc" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ color: "#475569", fontWeight: 700, fontSize: 13 }}>Invoice Number</div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a" }}>{invoice.invoice_number}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: "#475569", fontWeight: 700, fontSize: 13 }}>Issued</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{issuedLabel}</div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))", gap: 12 }}>
+            <InfoBlock label="Business" value={businessName} />
+            <InfoBlock label="Customer" value={invoice.customer_name || tx?.customer_name || "--"} />
+            <InfoBlock label="Transaction date" value={txDate ? new Date(txDate).toLocaleDateString() : "--"} />
+            <InfoBlock label="Transaction reference" value={`TX-${tx?.id || invoice.transaction_id}`} />
+          </div>
+
+          <div style={{ padding: 14, borderRadius: 12, background: "#0f172a", color: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ fontWeight: 800, letterSpacing: 0.4 }}>Total Amount</div>
+            <div style={{ fontSize: 24, fontWeight: 900 }}>{formatMoney(invoice.total_amount)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoBlock({ label, value }) {
+  return (
+    <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#ffffff" }}>
+      <div style={{ color: "#94a3b8", fontWeight: 700, fontSize: 12 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", marginTop: 4 }}>{value || "--"}</div>
     </div>
   );
 }

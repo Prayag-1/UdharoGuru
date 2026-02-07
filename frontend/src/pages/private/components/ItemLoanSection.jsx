@@ -40,7 +40,10 @@ export default function ItemLoanSection({ items, loading, error, onAddItem, onRe
 
       <div style={{ display: "grid", gap: 12 }}>
         <div>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Active Items</div>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Items out right now</div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+            These are lent out and not yet returned.
+          </div>
           {loading ? (
             <div className="loans-grid">
               <SkeletonCard />
@@ -65,7 +68,10 @@ export default function ItemLoanSection({ items, loading, error, onAddItem, onRe
         </div>
 
         <div>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Returned Items</div>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Returned Items</div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+            Completed hand-backs for your records.
+          </div>
           {loading ? (
             <div className="loans-grid">
               <SkeletonCard />
