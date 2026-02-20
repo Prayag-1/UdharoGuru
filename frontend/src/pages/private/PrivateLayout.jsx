@@ -16,6 +16,7 @@ export default function PrivateLayout() {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [copyState, setCopyState] = useState("idle");
 
   useEffect(() => {
     let active = true;
@@ -66,9 +67,25 @@ export default function PrivateLayout() {
   };
 
   const handleCopy = async () => {
-    if (!inviteCode || !navigator?.clipboard) return;
-    await navigator.clipboard.writeText(inviteCode);
+    if (!inviteCode) return;
+    if (!navigator?.clipboard) {
+      setCopyState("error");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setCopyState("copied");
+    } catch (copyError) {
+      console.error("Failed to copy invite code", copyError);
+      setCopyState("error");
+    }
   };
+
+  useEffect(() => {
+    if (copyState !== "copied" && copyState !== "error") return;
+    const timer = setTimeout(() => setCopyState("idle"), 2000);
+    return () => clearTimeout(timer);
+  }, [copyState]);
 
   return (
     <div className="private-layout">
@@ -112,7 +129,7 @@ export default function PrivateLayout() {
               <div className="invite-box">
                 <input className="input" value={inviteCode} readOnly />
                 <button className="button secondary" type="button" onClick={handleCopy} disabled={!inviteCode}>
-                  Copy
+                  {copyState === "copied" ? "Copied!" : copyState === "error" ? "Copy failed" : "Copy"}
                 </button>
               </div>
             )}
