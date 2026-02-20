@@ -139,7 +139,7 @@ export default function GroupsView() {
   }, [chatThread?.id]);
 
   const handleSend = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (!chatThread?.id || !chatInput.trim()) return;
     setChatSending(true);
     setChatError(null);
@@ -196,7 +196,6 @@ export default function GroupsView() {
       <div className="section-heading" style={{ marginBottom: 8 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>Groups</div>
-          <div className="muted">Create groups, manage members, and coordinate with in-context chat.</div>
         </div>
         <button className="button" type="button" onClick={() => setShowCreate(true)}>
           Create group
@@ -205,72 +204,73 @@ export default function GroupsView() {
 
       {error && <div className="error-text">{error}</div>}
 
-      <div className="section-card">
-        <div className="section-heading" style={{ marginBottom: 12 }}>
-          <div>
-            <div style={{ fontWeight: 700 }}>Your groups</div>
-            <div className="muted" style={{ fontSize: 13 }}>Groups you own or are a member of.</div>
+      <div className="split-layout">
+        <div className="stack">
+          <div className="section-card">
+            <div className="section-heading" style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 700 }}>Your groups</div>
+            </div>
+            {groups.length === 0 ? (
+              <div className="empty-state">No groups yet. Create one to get started.</div>
+            ) : (
+              <div className="list">
+                {groups.map((group) => (
+                  <div
+                    key={group.id}
+                    className="row-card"
+                    style={{ gridTemplateColumns: "1.4fr 0.6fr 0.6fr auto" }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{group.name}</div>
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        Created {formatDate(group.created_at)} ? {group.member_count} members
+                      </div>
+                    </div>
+                    <div className="muted" style={{ fontSize: 13 }}>Role</div>
+                    <div className="pill" style={{ justifySelf: "start" }}>{group.role}</div>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button className="button secondary" type="button" onClick={() => setShowAddMemberFor(group)}>
+                        Add member
+                      </button>
+                      <button className="button" type="button" onClick={() => loadGroupChat(group)}>
+                        Open chat
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        {groups.length === 0 ? (
-          <div className="empty-state">No groups yet. Create one to get started.</div>
-        ) : (
-          <div className="list">
-            {groups.map((group) => (
-              <div
-                key={group.id}
-                className="row-card"
-                style={{ gridTemplateColumns: "1.4fr 0.6fr 0.6fr auto" }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700 }}>{group.name}</div>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    Created {formatDate(group.created_at)} · {group.member_count} members
+
+        <div className="stack">
+          <div className="section-card">
+            <div className="section-heading" style={{ marginBottom: 8 }}>
+              <div style={{ fontWeight: 700 }}>Friends</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <EmailAddForm onSubmit={handleAddFriendByEmail} submitting={saving} />
+            </div>
+            {friendError && <div className="error-text">{friendError}</div>}
+            {friends.length === 0 ? (
+              <div className="empty-state">No friends yet. Add by invite code or email.</div>
+            ) : (
+              <div className="list">
+                {friends.map((f) => (
+                  <div key={f.id} className="row-card" style={{ gridTemplateColumns: "1fr auto" }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{f.email}</div>
+                      <div className="muted" style={{ fontSize: 13 }}>Invite code: {f.invite_code}</div>
+                    </div>
+                    <div className="muted" style={{ fontSize: 13 }}>Connected {formatDate(f.connected_at)}</div>
                   </div>
-                </div>
-                <div className="muted" style={{ fontSize: 13 }}>Role</div>
-                <div className="pill" style={{ justifySelf: "start" }}>{group.role}</div>
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                  <button className="button secondary" type="button" onClick={() => setShowAddMemberFor(group)}>
-                    Add member
-                  </button>
-                  <button className="button" type="button" onClick={() => loadGroupChat(group)}>
-                    Open chat
-                  </button>
-                </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      <div className="section-card">
-        <div className="section-heading" style={{ marginBottom: 8 }}>
-          <div>
-            <div style={{ fontWeight: 700 }}>Friends</div>
-            <div className="muted" style={{ fontSize: 13 }}>Add friends to invite them to groups.</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-          <EmailAddForm onSubmit={handleAddFriendByEmail} submitting={saving} />
-        </div>
-        {friendError && <div className="error-text">{friendError}</div>}
-        {friends.length === 0 ? (
-          <div className="empty-state">No friends yet. Add by invite code or email.</div>
-        ) : (
-          <div className="list">
-            {friends.map((f) => (
-              <div key={f.id} className="row-card" style={{ gridTemplateColumns: "1fr auto" }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{f.email}</div>
-                  <div className="muted" style={{ fontSize: 13 }}>Invite code: {f.invite_code}</div>
-                </div>
-                <div className="muted" style={{ fontSize: 13 }}>Connected {formatDate(f.connected_at)}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       <CreateGroupModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreateGroup} submitting={saving} />
       <AddGroupMemberModal
@@ -285,7 +285,6 @@ export default function GroupsView() {
       {chatGroup && (
         <ChatPanel
           title={`Group chat - ${chatGroup.name}`}
-          subtitle="Text-only chat inside this group. Polling every few seconds."
           loading={chatLoading}
           messages={chatMessages}
           inputValue={chatInput}

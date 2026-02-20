@@ -18,19 +18,33 @@ export default function SettleUpModal({ open, onClose, connections = [], balance
       .filter((c) => c.balance < 0);
   }, [balances, connections]);
 
+  const receivableOptions = useMemo(() => {
+    return connections
+      .map((conn) => {
+        const target = conn.connected_user || {};
+        const id = conn.connected_user_id || target.id || conn.id;
+        const email = conn.connected_user_email || target.email || conn.email;
+        const balance = balances[id] || 0;
+        return { id, email, balance };
+      })
+      .filter((c) => c.balance > 0);
+  }, [balances, connections]);
+
   const [selected, setSelected] = useState(null);
+  const [selectedBalance, setSelectedBalance] = useState(0);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState(null);
 
   const handleChoose = (id, balance) => {
     setSelected(id);
+    setSelectedBalance(balance || 0);
     setAmount(Math.abs(balance || 0));
     setError(null);
   };
 
   const handleSave = async () => {
     if (!selected) {
-      setError("Select who you owe.");
+      setError("Select a friend to settle with.");
       return;
     }
     if (!amount || Number(amount) <= 0) {
@@ -38,8 +52,10 @@ export default function SettleUpModal({ open, onClose, connections = [], balance
       return;
     }
     try {
-      await onSubmit({ connectionId: selected, amount: Number(amount) });
+      const direction = selectedBalance < 0 ? "you_owe" : "owed_to_you";
+      await onSubmit({ connectionId: selected, amount: Number(amount), direction });
       setSelected(null);
+      setSelectedBalance(0);
       setAmount("");
       setError(null);
     } catch (err) {
@@ -59,26 +75,51 @@ export default function SettleUpModal({ open, onClose, connections = [], balance
           </button>
         </div>
 
-        {payableOptions.length === 0 ? (
-          <div className="empty-state">You do not owe anyone right now.</div>
+        {payableOptions.length === 0 && receivableOptions.length === 0 ? (
+          <div className="empty-state">No balances to settle right now.</div>
         ) : (
           <div className="form-grid">
-            <div className="label">Who you owe</div>
-            <div className="list">
-              {payableOptions.map((p) => (
-                <label
-                  key={p.id}
-                  className="row-card"
-                  style={{ gridTemplateColumns: "1fr auto", cursor: "pointer" }}
-                  onClick={() => handleChoose(p.id, p.balance)}
-                >
-                  <span>{p.email || `User ${p.id}`}</span>
-                  <span className="currency" style={{ color: "#b91c1c" }}>
-                    {formatCurrency(Math.abs(p.balance))}
-                  </span>
-                </label>
-              ))}
-            </div>
+            {payableOptions.length > 0 && (
+              <>
+                <div className="label">You owe</div>
+                <div className="list">
+                  {payableOptions.map((p) => (
+                    <label
+                      key={p.id}
+                      className="row-card"
+                      style={{ gridTemplateColumns: "1fr auto", cursor: "pointer" }}
+                      onClick={() => handleChoose(p.id, p.balance)}
+                    >
+                      <span>{p.email || `User ${p.id}`}</span>
+                      <span className="currency" style={{ color: "#b91c1c" }}>
+                        {formatCurrency(Math.abs(p.balance))}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {receivableOptions.length > 0 && (
+              <>
+                <div className="label">Owed to you</div>
+                <div className="list">
+                  {receivableOptions.map((p) => (
+                    <label
+                      key={p.id}
+                      className="row-card"
+                      style={{ gridTemplateColumns: "1fr auto", cursor: "pointer" }}
+                      onClick={() => handleChoose(p.id, p.balance)}
+                    >
+                      <span>{p.email || `User ${p.id}`}</span>
+                      <span className="currency" style={{ color: "#0b7a34" }}>
+                        {formatCurrency(Math.abs(p.balance))}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
 
             <label className="label">
               Amount
@@ -101,8 +142,13 @@ export default function SettleUpModal({ open, onClose, connections = [], balance
           <button className="button secondary" type="button" onClick={onClose} disabled={submitting}>
             Cancel
           </button>
-          <button className="button" type="button" onClick={handleSave} disabled={submitting || payableOptions.length === 0}>
-            {submitting ? "Saving..." : "Record cash payment"}
+          <button
+            className="button"
+            type="button"
+            onClick={handleSave}
+            disabled={submitting || (payableOptions.length === 0 && receivableOptions.length === 0)}
+          >
+            {submitting ? "Saving..." : "Record settlement"}
           </button>
         </div>
       </div>

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
-import { getOrCreateDirectThread, getPrivateTransactions, getThreadMessages, sendThreadMessage } from "../../api/private";
+import {
+  addPrivateFriendByInviteCode,
+  getOrCreateDirectThread,
+  getPrivateConnections,
+  getPrivateTransactions,
+  getThreadMessages,
+  sendThreadMessage,
+} from "../../api/private";
 import ChatPanel from "./components/ChatPanel";
 import "./PrivateDashboard.css";
 
@@ -25,7 +32,7 @@ const normalizeConnection = (conn) => {
 };
 
 export default function FriendsView() {
-  const { connections, user } = useOutletContext();
+  const { connections, setConnections, user } = useOutletContext();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -37,6 +44,10 @@ export default function FriendsView() {
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState(null);
   const pollRef = useRef(null);
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteError, setInviteError] = useState(null);
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState(false);
 
   const normalizedConnections = useMemo(() => connections.map(normalizeConnection), [connections]);
 
@@ -129,7 +140,7 @@ export default function FriendsView() {
   }, [chatThread?.id]);
 
   const handleSend = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (!chatThread?.id || !chatInput.trim()) return;
     setChatSending(true);
     setChatError(null);
@@ -160,98 +171,159 @@ export default function FriendsView() {
     if (pollRef.current) clearInterval(pollRef.current);
   };
 
+  const handleAddFriendByInvite = async (e) => {
+    e.preventDefault();
+    const code = inviteCode.trim().toUpperCase();
+    if (!code) return;
+    setInviteError(null);
+    setInviteSuccess(false);
+    setInviteSaving(true);
+    try {
+      await addPrivateFriendByInviteCode({ invite_code: code });
+      const { data } = await getPrivateConnections();
+      setConnections(Array.isArray(data) ? data : data?.results || []);
+      setInviteCode("");
+      setInviteSuccess(true);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.invite_code ||
+        "Unable to add friend.";
+      setInviteError(msg);
+    } finally {
+      setInviteSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!inviteSuccess) return;
+    const timer = setTimeout(() => setInviteSuccess(false), 2000);
+    return () => clearTimeout(timer);
+  }, [inviteSuccess]);
+
   return (
     <div className="dashboard-shell">
       <div className="section-heading" style={{ marginBottom: 8 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 900 }}>Friends</div>
-          <div className="muted">Connections and balances</div>
         </div>
       </div>
-
-      {loading ? (
-        <div className="section-card">
-          <span className="skeleton" style={{ width: "100%", height: 80 }} />
-        </div>
-      ) : error ? (
-        <div className="error-text">{error}</div>
-      ) : normalizedConnections.length === 0 ? (
-        <div className="empty-state">No connections yet.</div>
-      ) : (
-        <div className="section-card">
-          <div className="list">
-            {normalizedConnections.map((conn) => {
-              const net = balances[conn.id] || 0;
-              return (
-                <div
-                  key={conn.id}
-                  className="row-card"
-                  style={{ gridTemplateColumns: "1fr auto", cursor: "pointer" }}
-                  onClick={() => {
-                    setSelectedFriend(conn.id);
-                    loadChat(conn.id);
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 800 }}>{conn.full_name || conn.email || `User ${conn.id}`}</div>
-                    <div className="muted">{conn.email}</div>
-                  </div>
-                  <div className="currency" style={{ color: net > 0 ? "#0b7a34" : net < 0 ? "#b91c1c" : "#0f172a" }}>
-                    {formatCurrency(net)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {selectedFriend && (
-        <div className="section-card">
-          <div className="section-heading" style={{ marginBottom: 8 }}>
-            <div style={{ fontWeight: 800 }}>Expenses with this friend</div>
-            <button className="button secondary" type="button" onClick={handleClearSelection}>
-              Clear filter
-            </button>
-          </div>
-          {filteredTx.length === 0 ? (
-            <div className="empty-state">No expenses with this friend yet.</div>
-          ) : (
-            <div className="list">
-              {filteredTx.map((tx) => {
-                const isLent = tx.transaction_type === "LENT";
-                return (
-                  <div key={tx.id} className="row-card" style={{ gridTemplateColumns: "1fr 1fr auto" }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{tx.note || "Expense"}</div>
-                      <div className="muted">{formatDate(tx.transaction_date)}</div>
-                    </div>
-                    <div className="muted" style={{ fontSize: 13 }}>{isLent ? "You lent" : "You borrowed"}</div>
-                    <div className="currency" style={{ color: isLent ? "#0b7a34" : "#b91c1c" }}>
-                      {formatCurrency(tx.amount)}
-                    </div>
-                  </div>
-                );
-              })}
+      <div className="split-layout">
+        <div className="stack">
+          <div className="section-card">
+            <div className="section-heading" style={{ marginBottom: 8 }}>
+              <div style={{ fontWeight: 700 }}>Add friend</div>
             </div>
+            <form
+              onSubmit={handleAddFriendByInvite}
+              style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+            >
+              <input
+                className="input"
+                type="text"
+                placeholder="Invite code"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                style={{ minWidth: 200, textTransform: "uppercase" }}
+              />
+              <button className="button" type="submit" disabled={inviteSaving || !inviteCode.trim()}>
+                {inviteSaving ? "Adding..." : inviteSuccess ? "Added!" : "Add friend"}
+              </button>
+            </form>
+            {inviteError && <div className="error-text" style={{ marginTop: 8 }}>{inviteError}</div>}
+          </div>
+
+          <div className="section-card">
+            <div className="section-heading" style={{ marginBottom: 8 }}>
+              <div style={{ fontWeight: 700 }}>Connections</div>
+            </div>
+            {loading ? (
+              <span className="skeleton" style={{ width: "100%", height: 80 }} />
+            ) : error ? (
+              <div className="error-text">{error}</div>
+            ) : normalizedConnections.length === 0 ? (
+              <div className="empty-state">No connections yet.</div>
+            ) : (
+              <div className="list">
+                {normalizedConnections.map((conn) => {
+                  const net = balances[conn.id] || 0;
+                  return (
+                    <div
+                      key={conn.id}
+                      className="row-card"
+                      style={{ gridTemplateColumns: "1fr auto", cursor: "pointer" }}
+                      onClick={() => {
+                        setSelectedFriend(conn.id);
+                        loadChat(conn.id);
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{conn.full_name || conn.email || `User ${conn.id}`}</div>
+                        <div className="muted">{conn.email}</div>
+                      </div>
+                      <div className="currency" style={{ color: net > 0 ? "#0b7a34" : net < 0 ? "#b91c1c" : "#0f172a" }}>
+                        {formatCurrency(net)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="stack">
+          <div className="section-card">
+            <div className="section-heading" style={{ marginBottom: 8 }}>
+              <div style={{ fontWeight: 700 }}>
+                {selectedFriend ? `Details - ${activeFriend?.full_name || activeFriend?.email || "Friend"}` : "Details"}
+              </div>
+              {selectedFriend && (
+                <button className="button secondary" type="button" onClick={handleClearSelection}>
+                  Clear
+                </button>
+              )}
+            </div>
+            {!selectedFriend ? (
+              <div className="empty-state">Select a friend to view details.</div>
+            ) : filteredTx.length === 0 ? (
+              <div className="empty-state">No expenses with this friend yet.</div>
+            ) : (
+              <div className="list">
+                {filteredTx.map((tx) => {
+                  const isLent = tx.transaction_type === "LENT";
+                  return (
+                    <div key={tx.id} className="row-card" style={{ gridTemplateColumns: "1fr 1fr auto" }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{tx.note || "Expense"}</div>
+                        <div className="muted">{formatDate(tx.transaction_date)}</div>
+                      </div>
+                      <div className="muted" style={{ fontSize: 13 }}>{isLent ? "You lent" : "You borrowed"}</div>
+                      <div className="currency" style={{ color: isLent ? "#0b7a34" : "#b91c1c" }}>
+                        {formatCurrency(tx.amount)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {selectedFriend && (
+            <ChatPanel
+              title={`Chat with ${activeFriend?.full_name || activeFriend?.email || "friend"}`}
+              loading={chatLoading}
+              messages={chatMessages}
+              inputValue={chatInput}
+              onInputChange={setChatInput}
+              onSend={handleSend}
+              sending={chatSending}
+              currentUserEmail={user?.email}
+              error={chatError}
+            />
           )}
         </div>
-      )}
-
-      {selectedFriend && (
-        <ChatPanel
-          title={`Chat with ${activeFriend?.full_name || activeFriend?.email || "friend"}`}
-          subtitle="Text-only chat. Polls every few seconds and stays scoped to this friend."
-          loading={chatLoading}
-          messages={chatMessages}
-          inputValue={chatInput}
-          onInputChange={setChatInput}
-          onSend={handleSend}
-          sending={chatSending}
-          currentUserEmail={user?.email}
-          error={chatError}
-        />
-      )}
+      </div>
     </div>
   );
 }

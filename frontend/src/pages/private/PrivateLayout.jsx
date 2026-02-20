@@ -97,9 +97,6 @@ export default function PrivateLayout() {
           ) : (
             <>
               <span className="muted" style={{ fontWeight: 700 }}>{user?.email}</span>
-              <button className="button secondary" type="button" onClick={() => navigate("/private/dashboard")}>
-                Your account
-              </button>
               <button className="button" type="button" onClick={handleLogout}>
                 Log out
               </button>

@@ -38,14 +38,21 @@ export default function ChatPanel({
   }, [orderedMessages.length, loading]);
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (!inputValue?.trim() || sending) return;
-    if (typeof onSend === "function") onSend();
+    if (typeof onSend === "function") onSend(e);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
   };
 
   return (
-    <div className="section-card">
-      <div className="section-heading" style={{ marginBottom: 8 }}>
+    <div className="section-card chat-panel">
+      <div className="chat-header">
         <div>
           <div style={{ fontWeight: 800 }}>{title}</div>
           {subtitle && <div className="muted" style={{ fontSize: 13 }}>{subtitle}</div>}
@@ -63,37 +70,39 @@ export default function ChatPanel({
         <div className="skeleton" style={{ width: "100%", height: 180 }} />
       ) : (
         <>
-          <div className="chat-box" ref={listRef}>
-            {orderedMessages.length === 0 ? (
-              <div className="muted">{emptyLabel}</div>
-            ) : (
-              orderedMessages.map((m) => {
-                const isSelf = normalizedEmail && m.sender_email?.toLowerCase() === normalizedEmail;
-                return (
-                  <div key={m.id || `${m.created_at}-${m.message}`} className={isSelf ? "chat-row me" : "chat-row"}>
-                    <div className="chat-meta">
-                      <span className="chat-author">{isSelf ? "You" : m.sender_email}</span>
-                      <span className="chat-time">{formatTimestamp(m.created_at)}</span>
+          <div className="chat-body" ref={listRef}>
+            <div className="chat-messages">
+              {orderedMessages.length === 0 ? (
+                <div className="chat-empty">{emptyLabel}</div>
+              ) : (
+                orderedMessages.map((m) => {
+                  const isSelf = normalizedEmail && m.sender_email?.toLowerCase() === normalizedEmail;
+                  return (
+                    <div key={m.id || `${m.created_at}-${m.message}`} className={isSelf ? "chat-row me" : "chat-row"}>
+                      <div className="chat-meta">
+                        <span className="chat-author">{isSelf ? "You" : m.sender_email}</span>
+                        <span className="chat-time">{formatTimestamp(m.created_at)}</span>
+                      </div>
+                      <div className={isSelf ? "chat-bubble self" : "chat-bubble"}>{m.message}</div>
                     </div>
-                    <div className={isSelf ? "chat-bubble self" : "chat-bubble"}>{m.message}</div>
-                  </div>
-                );
-              })
-            )}
+                  );
+                })
+              )}
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="chat-input-row">
+          <form onSubmit={handleSubmit} className="chat-footer">
             <textarea
-              className="textarea"
+              className="chat-input"
               placeholder="Type a message"
               value={inputValue}
               onChange={(e) => onInputChange?.(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={2}
             />
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button className="button" type="submit" disabled={sending || !inputValue?.trim()}>
-                {sending ? "Sending..." : "Send"}
-              </button>
-            </div>
+            <button className="button chat-send" type="submit" disabled={sending || !inputValue?.trim()}>
+              {sending ? "Sending..." : "Send"}
+            </button>
           </form>
         </>
       )}

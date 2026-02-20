@@ -53,7 +53,6 @@ export default function ActivityView() {
       <div className="section-heading" style={{ marginBottom: 8 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 900 }}>Recent activity</div>
-          <div className="muted">Latest moves on your account, {user?.email}</div>
         </div>
       </div>
 

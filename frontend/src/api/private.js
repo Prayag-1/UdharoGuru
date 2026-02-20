@@ -25,6 +25,8 @@ export const getPrivateFriends = () => api.get("private/friends/");
 
 export const addPrivateFriendByEmail = (payload) => api.post("private/friends/add/", payload);
 
+export const addPrivateFriendByInviteCode = (payload) => api.post("private/connect/", payload);
+
 export const getGroups = () => api.get("private/groups/");
 
 export const createGroup = (payload) => api.post("private/groups/", payload);

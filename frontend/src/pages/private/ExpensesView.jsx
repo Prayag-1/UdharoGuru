@@ -44,11 +44,6 @@ export default function ExpensesView() {
   const [detailTx, setDetailTx] = useState(null);
   const [savingExpense, setSavingExpense] = useState(false);
   const [savingSettle, setSavingSettle] = useState(false);
-  const [defaultSplit, setDefaultSplit] = useState(() => {
-    const saved = window.localStorage.getItem("defaultSplitPercent");
-    const val = Number(saved);
-    return Number.isFinite(val) && val > 0 && val < 100 ? val : 50;
-  });
   const [prefillExpense, setPrefillExpense] = useState(null);
 
   const normalizedConnections = useMemo(() => connections.map(normalizeConnection), [connections]);
@@ -147,16 +142,18 @@ export default function ExpensesView() {
     }
   };
 
-  const handleSettle = async ({ connectionId, amount }) => {
+  const handleSettle = async ({ connectionId, amount, direction }) => {
     setSavingSettle(true);
     try {
       const personName = labelForConnection(connectionId);
+      const transactionType = direction === "you_owe" ? "LENT" : "BORROWED";
+      const note = direction === "you_owe" ? "Settlement paid" : "Settlement received";
       await createPrivateTransaction({
         person_name: personName,
         amount,
-        transaction_type: "BORROWED",
+        transaction_type: transactionType,
         transaction_date: new Date().toISOString().slice(0, 10),
-        note: "Settlement",
+        note,
       });
       setShowSettle(false);
       await refreshTransactions();
@@ -170,10 +167,6 @@ export default function ExpensesView() {
       <div className="section-heading" style={{ marginBottom: 8 }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 900 }}>All expenses</div>
-            <div className="muted">Splitwise-style feed of your private transactions</div>
-            <div className="muted" style={{ fontSize: 12 }}>
-              Default split: them {defaultSplit}% / you {100 - defaultSplit}% (applied to new expenses)
-            </div>
           </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="button secondary" type="button" onClick={() => setShowSettle(true)}>
@@ -235,11 +228,6 @@ export default function ExpensesView() {
         onSave={handleSaveExpense}
         connections={normalizedConnections}
         submitting={savingExpense}
-        defaultSplit={defaultSplit}
-        onSaveDefaultSplit={(percent) => {
-          setDefaultSplit(percent);
-          window.localStorage.setItem("defaultSplitPercent", String(percent));
-        }}
         prefill={prefillExpense}
       />
 

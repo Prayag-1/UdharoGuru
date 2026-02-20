@@ -254,32 +254,23 @@ export default function DashboardView() {
   return (
     <div className="dashboard-shell">
       <div className="section-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 900 }}>Money Snapshot</div>
-            <div className="muted" style={{ fontSize: 14 }}>
-              Quick view of what’s coming to you and what you need to clear, tailored for {user?.email}
-            </div>
-          </div>
+        <div className="section-heading" style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 22, fontWeight: 900 }}>Money snapshot</div>
+          {user?.email && <div className="pill">{user.email}</div>}
         </div>
-        <div style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <div className="summary-card" style={{ flex: "1 1 200px" }}>
+        <div className="grid-3">
+          <div className="summary-card">
             <div className="card-title" title="People owe you this amount">Due to you</div>
             <div className="currency positive" style={{ marginTop: 6 }}>{currency(owed)}</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Friends will pay you back this much.</div>
           </div>
-          <div className="summary-card" style={{ flex: "1 1 200px" }}>
+          <div className="summary-card">
             <div className="card-title" title="You owe this amount to others">You need to pay</div>
             <div className="currency negative" style={{ marginTop: 6 }}>{currency(owes)}</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>What you owe across all friends/groups.</div>
           </div>
-          <div className="summary-card" style={{ flex: "1 1 200px" }}>
+          <div className="summary-card">
             <div className="card-title" title="Receivable minus payable">Net position</div>
             <div className={`currency ${net > 0 ? "positive" : net < 0 ? "negative" : "primary"}`} style={{ marginTop: 6 }}>
               {currency(net)}
-            </div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              Positive means you’re ahead; negative means you owe more than you’re owed.
             </div>
           </div>
         </div>
@@ -295,9 +286,6 @@ export default function DashboardView() {
         <div className="section-heading">
           <div>
             <div style={{ fontWeight: 800, fontSize: 18 }}>Spending trend</div>
-            <div className="muted" style={{ fontSize: 14 }}>
-              Outgoing spend over time, updated live from your transactions.
-            </div>
           </div>
           <div className="pill" style={{ gap: 10 }}>
             <button
@@ -365,12 +353,6 @@ export default function DashboardView() {
         <div className="section-heading">
           <div>
             <div style={{ fontWeight: 800, fontSize: 18 }}>Spending by category</div>
-            <div className="muted" style={{ fontSize: 14 }}>
-              See where your money goes; data updates automatically from your transactions.
-            </div>
-            <div className="muted" style={{ fontSize: 12 }} title="Food, travel, entertainment, shopping, utilities, health, other">
-              Categorized using transaction details. Outflows only (debits/payments).
-            </div>
           </div>
           <div className="pill" title="Total outgoing across all categories">
             Total spent: {currency(spending.totalSpent)}
@@ -404,12 +386,6 @@ export default function DashboardView() {
         <div className="section-heading">
           <div>
             <div style={{ fontWeight: 800, fontSize: 18 }}>Item Lending</div>
-            <div className="muted" style={{ fontSize: 14 }}>
-              Track who has your things, set gentle reminders, and log returns.
-            </div>
-            <div className="muted" style={{ fontSize: 12 }} title="Lent = you gave it out. Borrowed = you received it.">
-              “Lent” means you handed it out; “Borrowed” means you picked it up.
-            </div>
           </div>
           <button className="button" type="button" onClick={() => setShowItemModal(true)}>
             Add an item

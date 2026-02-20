@@ -37,28 +37,25 @@ export default function AddExpenseModal({
     [connections]
   );
 
-  const evenSplit = (ids) => {
-    if (!ids.length) return [];
-    const base = Math.floor((100 / ids.length) * 100) / 100;
-    let remainder = 100 - base * ids.length;
-    return ids.map((id) => {
-      const add = remainder > 0 ? 0.01 : 0;
-      if (remainder > 0) remainder = Math.max(0, remainder - 0.01);
-      return { id, percent: Math.max(1, base + add) };
-    });
+  const calcPercent = (amount, total) => {
+    if (!total) return 0;
+    return Math.max(0, (Number(amount) / Number(total)) * 100);
   };
 
-  const recalcAmounts = (splitArr, total) =>
+  const recalcPercents = (splitArr, total) =>
     splitArr.map((s) => ({
       ...s,
-      amount: total ? Number(total) * (s.percent / 100) : 0,
+      amount: Number(s.amount || 0),
+      percent: calcPercent(s.amount || 0, total),
     }));
 
   useEffect(() => {
     if (!open) return;
     const ids = connections.slice(0, 1).map((c) => c.id);
-    const initialSplits = ids.length ? [{ id: ids[0], percent: defaultSplit }] : [];
-    setSplits(recalcAmounts(initialSplits, totalAmount));
+    const initialSplits = ids.length
+      ? [{ id: ids[0], amount: totalAmount ? Number(totalAmount) * (defaultSplit / 100) : 0 }]
+      : [];
+    setSplits(recalcPercents(initialSplits, totalAmount));
   }, [open, connections, defaultSplit, totalAmount]);
 
   useEffect(() => {
@@ -66,8 +63,13 @@ export default function AddExpenseModal({
     setDescription(prefill.description || "");
     setTotalAmount(prefill.amount || "");
     setDate(prefill.date || today());
-    setSplits((prev) => recalcAmounts(prev.length ? prev : [], prefill.amount || totalAmount));
+    setSplits((prev) => recalcPercents(prev.length ? prev : [], prefill.amount || totalAmount));
   }, [prefill, open, totalAmount]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSplits((prev) => recalcPercents(prev, totalAmount));
+  }, [open, totalAmount]);
 
   const reset = () => {
     setDescription("");
@@ -94,11 +96,6 @@ export default function AddExpenseModal({
       setError("Select at least one friend to split with.");
       return;
     }
-    const totalPercent = splits.reduce((s, x) => s + Number(x.percent || 0), 0);
-    if (Math.round(totalPercent) !== 100) {
-      setError("Split percentages must add up to 100%.");
-      return;
-    }
     setStep(2);
   };
 
@@ -109,10 +106,10 @@ export default function AddExpenseModal({
         description: description.trim(),
         totalAmount: Number(totalAmount),
         date,
-        splits: recalcAmounts(splits, totalAmount),
+        splits: recalcPercents(splits, totalAmount),
       });
       if (saveAsDefault && onSaveDefaultSplit && splits.length === 1) {
-        onSaveDefaultSplit(splits[0].percent);
+        onSaveDefaultSplit(Math.round(splits[0].percent));
       }
       reset();
     } catch (err) {
@@ -155,7 +152,7 @@ export default function AddExpenseModal({
             <div className="label">
               Split with friends
               <div className="muted" style={{ fontSize: 12 }}>
-                Choose who shares this expense and set custom ratios.
+                Choose who shares this expense and set custom amounts.
               </div>
             </div>
             <div className="list" style={{ maxHeight: 220, overflow: "auto" }}>
@@ -168,39 +165,51 @@ export default function AddExpenseModal({
                       checked={Boolean(existing)}
                       onChange={(e) => {
                         const checked = e.target.checked;
-                        let ids = splits.map((s) => s.id);
                         if (checked) {
-                          ids = [...ids, opt.id];
-                          const even = evenSplit(ids);
-                          setSplits(recalcAmounts(even, totalAmount));
+                          setSplits((prev) =>
+                            recalcPercents(
+                              [...prev, { id: opt.id, amount: 0 }],
+                              totalAmount
+                            )
+                          );
                         } else {
-                          ids = ids.filter((id) => id !== opt.id);
-                          const even = evenSplit(ids);
-                          setSplits(recalcAmounts(even, totalAmount));
+                          setSplits((prev) =>
+                            recalcPercents(
+                              prev.filter((s) => String(s.id) !== String(opt.id)),
+                              totalAmount
+                            )
+                          );
                         }
                       }}
                       style={{ width: 18, height: 18 }}
                     />
                     <div>
                       <div style={{ fontWeight: 700 }}>{opt.label}</div>
+                      {existing && (
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {existing.percent.toFixed(1)}% of total
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <input
                         className="input"
                         type="number"
-                        min="1"
-                        max="99"
-                        value={existing ? existing.percent : ""}
-                        placeholder="%"
+                        min="0"
+                        step="0.01"
+                        value={existing ? existing.amount : ""}
+                        placeholder="Amount"
                         disabled={!existing}
                         onChange={(e) => {
-                          const val = Math.min(99, Math.max(1, Number(e.target.value) || 0));
-                          setSplits((prev) => {
-                            const next = prev.map((s) =>
-                              String(s.id) === String(opt.id) ? { ...s, percent: val } : s
-                            );
-                            return recalcAmounts(next, totalAmount);
-                          });
+                          const val = Math.max(0, Number(e.target.value) || 0);
+                          setSplits((prev) =>
+                            recalcPercents(
+                              prev.map((s) =>
+                                String(s.id) === String(opt.id) ? { ...s, amount: val } : s
+                              ),
+                              totalAmount
+                            )
+                          );
                         }}
                         style={{ width: 80 }}
                       />
@@ -209,6 +218,11 @@ export default function AddExpenseModal({
                 );
               })}
             </div>
+            {splits.length > 0 && (
+              <div className="muted" style={{ fontSize: 12 }}>
+                Split total: {formatCurrency(splits.reduce((s, x) => s + Number(x.amount || 0), 0))}
+              </div>
+            )}
             <label className="label">
               Date
               <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -244,7 +258,7 @@ export default function AddExpenseModal({
                     <div key={s.id} style={{ display: "flex", justifyContent: "space-between" }}>
                       <div>{friend?.label || `Friend ${s.id}`}</div>
                       <div className="muted" style={{ fontSize: 13 }}>
-                        {s.percent}% ({formatCurrency(s.amount)})
+                        {s.percent.toFixed(1)}% ({formatCurrency(s.amount)})
                       </div>
                     </div>
                   );
