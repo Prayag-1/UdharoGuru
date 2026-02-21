@@ -10,11 +10,13 @@ import {
 } from "../../api/private";
 import {
   Bar,
-  BarChart,
   Cell,
   CartesianGrid,
   Line,
   LineChart,
+  Legend,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -53,8 +55,17 @@ const inferCategory = (tx) => {
   return "other";
 };
 
+const isSpending = (tx) => {
+  const type = (tx.transaction_type || tx.type || "").toString().toUpperCase();
+  return type === "BORROWED" || type === "DEBIT" || type === "PAYMENT";
+};
+
+const getTxDate = (tx) => tx.transaction_date || tx.date || tx.created_at || tx.createdAt || tx.timestamp;
+
+const formatDayKey = (d) => d.toISOString().slice(0, 10);
+
 const parseDate = (tx) => {
-  const raw = tx.date || tx.created_at || tx.createdAt || tx.timestamp;
+  const raw = getTxDate(tx);
   const d = raw ? new Date(raw) : null;
   return d && !Number.isNaN(d.getTime()) ? d : null;
 };
@@ -152,21 +163,20 @@ export default function DashboardView() {
     const totals = CATEGORY_MAP.reduce((acc, c) => ({ ...acc, [c.key]: 0 }), {});
     transactions.forEach((tx) => {
       const amount = Math.abs(Number(tx.amount || 0));
-      const type = (tx.transaction_type || tx.type || "").toUpperCase();
-      const isOutflow = type === "DEBIT" || type === "PAYMENT" || Number(tx.amount || 0) < 0;
-      if (!isOutflow || Number.isNaN(amount)) return;
+      if (!isSpending(tx) || Number.isNaN(amount)) return;
       const catKey = inferCategory(tx);
       totals[catKey] = (totals[catKey] || 0) + amount;
     });
     const items = CATEGORY_MAP.map((cat) => ({ ...cat, amount: totals[cat.key] || 0 }));
     const totalSpent = items.reduce((sum, c) => sum + c.amount, 0);
-    const max = Math.max(...items.map((c) => c.amount), 0.0001);
-    const chartData = items.map((c) => ({
-      name: c.label,
-      amount: Number(c.amount.toFixed(2)),
-      color: c.color,
-    }));
-    return { items, totalSpent, max, chartData };
+    const chartData = items
+      .filter((c) => c.amount > 0)
+      .map((c) => ({
+        name: c.label,
+        value: Number(c.amount.toFixed(2)),
+        color: c.color,
+      }));
+    return { items, totalSpent, chartData };
   }, [transactions]);
 
   const trend = useMemo(() => {
@@ -184,9 +194,7 @@ export default function DashboardView() {
     transactions.forEach((tx) => {
       const d = parseDate(tx);
       const amount = Math.abs(Number(tx.amount || 0));
-      const type = (tx.transaction_type || tx.type || "").toUpperCase();
-      const isOutflow = type === "DEBIT" || type === "PAYMENT" || Number(tx.amount || 0) < 0;
-      if (!d || !isOutflow || Number.isNaN(amount)) return;
+      if (!d || !isSpending(tx) || Number.isNaN(amount)) return;
       if (d < start || d > now) return;
       const idx = Math.floor((d - start) / (1000 * 60 * 60 * 24));
       if (idx >= 0 && idx < buckets.length) {
@@ -194,13 +202,12 @@ export default function DashboardView() {
       }
     });
 
-    const max = Math.max(...buckets.map((b) => b.total), 0.0001);
     const chartData = buckets.map((b) => ({
       dateLabel: formatShortDate(b.date),
       total: Number(b.total.toFixed(2)),
     }));
 
-    return { buckets, max, days, chartData };
+    return { buckets, chartData };
   }, [transactions, timeframe]);
 
   const handleReturnItem = async (loan) => {
@@ -316,8 +323,8 @@ export default function DashboardView() {
                 <LineChart data={trend.chartData} margin={{ left: 0, right: 12, top: 10, bottom: 10 }}>
                   <defs>
                     <linearGradient id="lineArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="rgba(79,124,248,0.35)" />
-                      <stop offset="100%" stopColor="rgba(79,124,248,0.02)" />
+                      <stop offset="0%" stopColor="rgba(37,99,235,0.35)" />
+                      <stop offset="100%" stopColor="rgba(37,99,235,0.02)" />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
@@ -327,7 +334,7 @@ export default function DashboardView() {
                   <Line
                     type="monotone"
                     dataKey="total"
-                    stroke="#4f7cf8"
+                    stroke="#2563eb"
                     strokeWidth={2}
                     dot={{ r: 3 }}
                     activeDot={{ r: 5 }}
@@ -339,7 +346,7 @@ export default function DashboardView() {
             </div>
             <div className="line-chart-legend">
               <span className="muted" style={{ fontSize: 12 }}>
-                Peak: {currency(trend.max)}
+                Peak: {currency(Math.max(...trend.buckets.map((b) => b.total), 0))}
               </span>
               <span className="muted" style={{ fontSize: 12 }}>
                 Total: {currency(trend.buckets.reduce((s, b) => s + b.total, 0))}
@@ -366,17 +373,22 @@ export default function DashboardView() {
         ) : (
           <div style={{ width: "100%", height: 260 }}>
             <ResponsiveContainer>
-              <BarChart data={spending.chartData} margin={{ left: 0, right: 0, top: 10, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#475569" }} />
-                <YAxis tickFormatter={currencyCompact} tick={{ fontSize: 12, fill: "#475569" }} />
-                <Tooltip content={<SpendingTooltip />} cursor={{ fill: "rgba(79,124,248,0.06)" }} />
-                <Bar dataKey="amount" radius={[6, 6, 6, 6]}>
+              <PieChart>
+                <Tooltip content={<SpendingTooltip />} />
+                <Legend layout="vertical" align="right" verticalAlign="middle" />
+                <Pie
+                  data={spending.chartData}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius="55%"
+                  outerRadius="85%"
+                  paddingAngle={2}
+                >
                   {spending.chartData.map((entry) => (
                     <Cell key={`cell-${entry.name}`} fill={entry.color} />
                   ))}
-                </Bar>
-              </BarChart>
+                </Pie>
+              </PieChart>
             </ResponsiveContainer>
           </div>
         )}

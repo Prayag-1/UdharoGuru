@@ -15,6 +15,7 @@ from .views import (
     GroupMemberAddView,
     GroupMemberRemoveView,
     GroupView,
+    GroupDetailView,
     PrivateMoneySummaryView,
     PrivateMoneyTransactionViewSet,
 )
@@ -29,6 +30,7 @@ urlpatterns = [
     path("friends/", PrivateFriendsListView.as_view(), name="private-friends"),
     path("friends/add/", PrivateFriendAddView.as_view(), name="private-friends-add"),
     path("groups/", GroupView.as_view(), name="private-groups"),
+    path("groups/<int:group_id>/", GroupDetailView.as_view(), name="private-group-detail"),
     path("groups/<int:group_id>/add-member/", GroupMemberAddView.as_view(), name="private-groups-add-member"),
     path("groups/<int:group_id>/add-member", GroupMemberAddView.as_view()),
     path("groups/<int:group_id>/remove-member/", GroupMemberRemoveView.as_view(), name="private-groups-remove-member"),

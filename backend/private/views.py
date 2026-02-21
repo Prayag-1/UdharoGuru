@@ -226,6 +226,36 @@ class GroupView(APIView):
         return Response(GroupSerializer(group).data, status=status.HTTP_201_CREATED)
 
 
+class GroupDetailView(APIView):
+    permission_classes = [IsPrivateAccount]
+
+    def _require_admin(self, request, group):
+        if group.owner_id == request.user.id:
+            return None
+        membership = GroupMember.objects.filter(group=group, user=request.user).first()
+        if not membership or membership.role != GroupMember.ADMIN:
+            return Response({"detail": "Admin only."}, status=status.HTTP_403_FORBIDDEN)
+        return None
+
+    def patch(self, request, group_id):
+        group = get_object_or_404(Group, pk=group_id)
+        denial = self._require_admin(request, group)
+        if denial:
+            return denial
+        serializer = GroupSerializer(group, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, group_id):
+        group = get_object_or_404(Group, pk=group_id)
+        denial = self._require_admin(request, group)
+        if denial:
+            return denial
+        group.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class GroupMemberAddView(APIView):
     permission_classes = [IsPrivateAccount]
 

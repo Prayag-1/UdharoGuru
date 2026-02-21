@@ -395,6 +395,78 @@
   justify-content: flex-end;
 }
 
+.group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.group-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(15, 23, 42, 0.1);
+}
+
+.group-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 70%;
+}
+
+.group-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.group-meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.role-pill {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.role-pill.admin {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-color: #c9d7ff;
+}
+
+.role-pill.member {
+  background: #f2f4f8;
+  color: #4b5563;
+  border-color: #e5e7eb;
+}
+
+.group-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  flex: 1 1 30%;
+}
+
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .button {
   padding: 10px 14px;
   border-radius: var(--radius-md);
@@ -406,6 +478,15 @@
   cursor: pointer;
   transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease, opacity 140ms ease;
   box-shadow: 0 6px 14px rgba(37, 99, 235, 0.22);
+}
+
+.button.primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+}
+
+.button.sm {
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
 .button:hover {
@@ -761,10 +842,21 @@
   .section-heading {
     flex-direction: column;
     align-items: flex-start;
-    padding-left: 14px;
+    padding-left: 0;
   }
   .row-actions {
     justify-content: flex-start;
+  }
+  .group-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .group-actions {
+    justify-content: flex-start;
+  }
+  .group-right {
+    width: 100%;
+    align-items: flex-start;
   }
   .bar-row {
     grid-template-columns: 1fr;

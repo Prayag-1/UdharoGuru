@@ -5,11 +5,13 @@ import {
   addGroupMember,
   addPrivateFriendByEmail,
   createGroup,
+  deleteGroup,
   getGroupThread,
   getGroups,
   getPrivateFriends,
   getThreadMessages,
   sendThreadMessage,
+  updateGroup,
 } from "../../api/private";
 import ChatPanel from "./components/ChatPanel";
 import "./PrivateDashboard.css";
@@ -33,6 +35,7 @@ export default function GroupsView() {
   const [showAddMemberFor, setShowAddMemberFor] = useState(null);
   const [saving, setSaving] = useState(false);
   const [friendError, setFriendError] = useState(null);
+  const [groupActionError, setGroupActionError] = useState(null);
   const [chatGroup, setChatGroup] = useState(null);
   const [chatThread, setChatThread] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
@@ -80,6 +83,44 @@ export default function GroupsView() {
       const { data } = await getGroups();
       setGroups(Array.isArray(data) ? data : data?.results || []);
       setShowCreate(false);
+      setGroupActionError(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRenameGroup = async (group) => {
+    const nextName = window.prompt("Rename group", group?.name || "");
+    if (!nextName || !nextName.trim()) return;
+    setSaving(true);
+    try {
+      await updateGroup(group.id, { name: nextName.trim() });
+      const { data } = await getGroups();
+      setGroups(Array.isArray(data) ? data : data?.results || []);
+      setGroupActionError(null);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || "Unable to rename group.";
+      setGroupActionError(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteGroup = async (group) => {
+    const confirmed = window.confirm(`Delete group "${group?.name}"? This cannot be undone.`);
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      await deleteGroup(group.id);
+      if (chatGroup?.id === group.id) {
+        handleCloseChat();
+      }
+      const { data } = await getGroups();
+      setGroups(Array.isArray(data) ? data : data?.results || []);
+      setGroupActionError(null);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || "Unable to delete group.";
+      setGroupActionError(msg);
     } finally {
       setSaving(false);
     }
@@ -203,6 +244,7 @@ export default function GroupsView() {
       </div>
 
       {error && <div className="error-text">{error}</div>}
+      {groupActionError && <div className="error-text">{groupActionError}</div>}
 
       <div className="split-layout">
         <div className="stack">
@@ -217,24 +259,34 @@ export default function GroupsView() {
                 {groups.map((group) => (
                   <div
                     key={group.id}
-                    className="row-card"
-                    style={{ gridTemplateColumns: "1.4fr 0.6fr 0.6fr auto" }}
+                    className="row-card group-row"
                   >
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{group.name}</div>
-                      <div className="muted" style={{ fontSize: 13 }}>
-                        Created {formatDate(group.created_at)} ? {group.member_count} members
+                    <div className="group-left">
+                      <div className="group-title">{group.name}</div>
+                      <div className="group-meta">
+                        Created {formatDate(group.created_at)} · {group.member_count} members
+                      </div>
+                      <div className={`role-pill ${group.role === "ADMIN" ? "admin" : "member"}`}>
+                        {group.role}
                       </div>
                     </div>
-                    <div className="muted" style={{ fontSize: 13 }}>Role</div>
-                    <div className="pill" style={{ justifySelf: "start" }}>{group.role}</div>
-                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                      <button className="button secondary" type="button" onClick={() => setShowAddMemberFor(group)}>
-                        Add member
-                      </button>
-                      <button className="button" type="button" onClick={() => loadGroupChat(group)}>
+                    <div className="group-right">
+                      <button className="button sm primary" type="button" onClick={() => loadGroupChat(group)}>
                         Open chat
                       </button>
+                      {group.role === "ADMIN" && (
+                        <div className="group-actions">
+                          <button className="button secondary sm" type="button" onClick={() => setShowAddMemberFor(group)}>
+                            Add member
+                          </button>
+                          <button className="button secondary sm" type="button" onClick={() => handleRenameGroup(group)}>
+                            Rename
+                          </button>
+                          <button className="button danger sm" type="button" onClick={() => handleDeleteGroup(group)}>
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

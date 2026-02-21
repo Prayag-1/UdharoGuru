@@ -31,6 +31,10 @@ export const getGroups = () => api.get("private/groups/");
 
 export const createGroup = (payload) => api.post("private/groups/", payload);
 
+export const updateGroup = (groupId, payload) => api.patch(`private/groups/${groupId}/`, payload);
+
+export const deleteGroup = (groupId) => api.delete(`private/groups/${groupId}/`);
+
 export const addGroupMember = (groupId, payload) => api.post(`private/groups/${groupId}/add-member/`, payload);
 
 export const removeGroupMember = (groupId, payload) =>
