@@ -30,5 +30,6 @@ class TransactionSerializer(serializers.ModelSerializer):
             "description",
             "due_date",
             "status",
+            "settled_at",
             "created_at",
         ]

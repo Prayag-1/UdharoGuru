@@ -27,10 +27,10 @@ import ItemLoanSection from "./components/ItemLoanSection";
 import "./PrivateDashboard.css";
 
 const currency = (value) =>
-  Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
+  Number(value || 0).toLocaleString("ne-NP", { style: "currency", currency: "NPR", minimumFractionDigits: 2 });
 
 const currencyCompact = (value) =>
-  Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  Number(value || 0).toLocaleString("ne-NP", { style: "currency", currency: "NPR", maximumFractionDigits: 0 });
 
 const CATEGORY_MAP = [
   { key: "food", label: "Food & Dining", color: "#4f7cf8" },

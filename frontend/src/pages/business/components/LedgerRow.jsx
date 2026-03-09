@@ -3,7 +3,7 @@ const gridTemplate = "1.05fr 1fr 1fr 0.8fr 0.9fr 1.3fr";
 export const formatMoney = (value) => {
   const num = Number(value || 0);
   if (Number.isNaN(num)) return "--";
-  return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return num.toLocaleString("ne-NP", { style: "currency", currency: "NPR" });
 };
 
 export const formatDate = (value) => {

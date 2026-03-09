@@ -59,6 +59,7 @@ class Transaction(models.Model):
         choices=STATUS_CHOICES,
         default=PENDING,
     )
+    settled_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

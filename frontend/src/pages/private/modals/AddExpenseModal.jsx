@@ -5,7 +5,7 @@ import "../../private/PrivateDashboard.css";
 const today = () => new Date().toISOString().slice(0, 10);
 
 const formatCurrency = (value) =>
-  Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
+  Number(value || 0).toLocaleString("ne-NP", { style: "currency", currency: "NPR", minimumFractionDigits: 2 });
 
 export default function AddExpenseModal({
   open,

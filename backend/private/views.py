@@ -21,6 +21,8 @@ from .models import (
     PrivateMoneyTransaction,
 )
 from .permissions import IsPrivateAccount
+from notifications.models import Notification
+from notifications.services import create_notification
 from .serializers import (
     ChatMessageSerializer,
     ChatThreadSerializer,
@@ -103,7 +105,49 @@ class PrivateMoneyTransactionViewSet(viewsets.ModelViewSet):
         return PrivateMoneyTransaction.objects.filter(owner=self.request.user).order_by("-created_at")
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        transaction = serializer.save(owner=self.request.user)
+        self._notify_counterparty(transaction)
+
+    def _notify_counterparty(self, transaction):
+        person_name = (transaction.person_name or "").strip()
+        if not person_name:
+            return
+        recipient = (
+            User.objects.filter(email__iexact=person_name)
+            .exclude(id=self.request.user.id)
+            .first()
+        )
+        if not recipient:
+            recipient = (
+                User.objects.filter(full_name__iexact=person_name)
+                .exclude(id=self.request.user.id)
+                .first()
+            )
+        if not recipient:
+            return
+
+        sender_name = self.request.user.full_name or self.request.user.email
+        amount_display = f"{transaction.amount:,.2f}"
+        note_text = (transaction.note or "").lower()
+        is_settlement = "settlement" in note_text
+
+        if is_settlement:
+            message = f"{sender_name} has settled a debt of Rs. {amount_display} with you."
+            notif_type = Notification.SETTLEMENT
+        elif transaction.transaction_type == PrivateMoneyTransaction.LENT:
+            message = f"{sender_name} recorded that they lent you Rs. {amount_display}."
+            notif_type = Notification.ACTIVITY
+        else:
+            message = f"{sender_name} recorded that they borrowed Rs. {amount_display} from you."
+            notif_type = Notification.ACTIVITY
+
+        create_notification(
+            recipient=recipient,
+            sender=self.request.user,
+            message=message,
+            notification_type=notif_type,
+            related_private_transaction=transaction,
+        )
 
 
 class PrivateMoneySummaryView(APIView):

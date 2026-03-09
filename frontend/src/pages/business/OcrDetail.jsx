@@ -9,7 +9,7 @@ const formatCurrency = (value) => {
   if (value === null || value === undefined) return "";
   const num = Number(value);
   if (Number.isNaN(num)) return "";
-  return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return num.toLocaleString("ne-NP", { style: "currency", currency: "NPR" });
 };
 
 const inputStyle = {

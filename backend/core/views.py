@@ -4,6 +4,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
+from django.contrib.auth import get_user_model
+from django.http import FileResponse
+from django.utils import timezone
 from .models import Customer, Transaction
 from .serializers import CustomerSerializer, TransactionSerializer
 from django.db.models import Sum
@@ -11,6 +14,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from notifications.services import create_settlement_notification
+from .receipts import generate_settlement_receipt
+
+User = get_user_model()
 
 class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
@@ -73,6 +80,54 @@ class TransactionViewSet(viewsets.ModelViewSet):
             raise PermissionError("Not allowed to add transaction for this customer")
 
         serializer.save()
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        previous_status = instance.status
+        transaction = serializer.save()
+        new_status = transaction.status
+
+        if previous_status != Transaction.PAID and new_status == Transaction.PAID:
+            if not transaction.settled_at:
+                transaction.settled_at = timezone.now()
+                transaction.save(update_fields=["settled_at"])
+            self._notify_settlement(transaction)
+
+    def _notify_settlement(self, transaction):
+        customer_email = (transaction.customer.email or "").strip()
+        if not customer_email:
+            return
+        recipient = (
+            User.objects.filter(email__iexact=customer_email)
+            .exclude(id=self.request.user.id)
+            .first()
+        )
+        if not recipient:
+            return
+        sender_name = self.request.user.full_name or self.request.user.email
+        amount_value = transaction.amount
+        amount_display = f"{amount_value:,.2f}"
+        message = f"{sender_name} has settled a debt of Rs. {amount_display} with you."
+        create_settlement_notification(
+            recipient=recipient,
+            sender=self.request.user,
+            transaction=transaction,
+            message=message,
+        )
+
+    @action(detail=True, methods=["get"], url_path="receipt")
+    def receipt(self, request, pk=None):
+        transaction = self.get_object()
+        if transaction.status != Transaction.PAID:
+            return Response({"detail": "Transaction is not settled."}, status=400)
+
+        receipt_path = generate_settlement_receipt(transaction)
+        return FileResponse(
+            open(receipt_path, "rb"),
+            as_attachment=True,
+            filename=receipt_path.name,
+            content_type="application/pdf",
+        )
 
     @action(detail=False, methods=["get"])
     def summary(self, request):

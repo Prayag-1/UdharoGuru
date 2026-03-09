@@ -26,6 +26,123 @@
   font-family: "Poppins", "Open Sans", "Roboto", sans-serif;
 }
 
+.private-layout.dark,
+.dashboard.dark {
+  --bg: #0f141b;
+  --bg-soft: #141b24;
+  --surface: #1b2430;
+  --surface-muted: #202a37;
+  --border: #2a3646;
+  --border-strong: #354357;
+  --text: #e5e7eb;
+  --muted: #9aa5b6;
+  --accent: #60a5fa;
+  --accent-strong: #3b82f6;
+  --accent-soft: rgba(96, 165, 250, 0.16);
+  --positive: #22c55e;
+  --negative: #f87171;
+  --pill-bg: rgba(59, 130, 246, 0.12);
+  --badge-bg: rgba(148, 163, 184, 0.2);
+  --shadow-soft: 0 10px 24px rgba(5, 8, 14, 0.6);
+}
+
+.notif-wrap {
+  position: relative;
+}
+
+.notification-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.notification-bell svg {
+  width: 18px;
+  height: 18px;
+}
+
+.notif-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 10px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 360px;
+  max-height: 420px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+  padding: 14px;
+  z-index: 20;
+}
+
+.notification-title {
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.notification-item.unread {
+  background: var(--accent-soft);
+  border-color: var(--border-strong);
+}
+
+.notification-message {
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.notification-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .private-layout {
   display: flex;
   flex-direction: column;
@@ -56,6 +173,61 @@
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 10px 4px 4px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.theme-toggle-track {
+  width: 38px;
+  height: 20px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  position: relative;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  transition: transform 180ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.private-layout.dark .theme-toggle-track,
+.dashboard.dark .theme-toggle-track {
+  background: rgba(96, 165, 250, 0.18);
+  border-color: var(--border-strong);
+}
+
+.private-layout.dark .theme-toggle-thumb,
+.dashboard.dark .theme-toggle-thumb {
+  transform: translateX(18px);
+  background: var(--accent);
+  border-color: var(--accent-strong);
+}
+
+.theme-toggle-text {
+  min-width: 40px;
+  text-align: left;
 }
 
 .layout-shell {
@@ -317,7 +489,7 @@
 }
 
 .tooltip-card {
-  background: #ffffff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 8px 10px;
@@ -769,7 +941,7 @@
   padding: 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .chat-input {
@@ -782,7 +954,7 @@
   padding: 10px 12px;
   font-size: 14px;
   font-family: inherit;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .chat-input:focus {

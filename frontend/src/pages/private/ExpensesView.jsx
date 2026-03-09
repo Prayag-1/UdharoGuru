@@ -15,7 +15,7 @@ const formatDate = (value) => {
 };
 
 const formatCurrency = (value) =>
-  Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
+  Number(value || 0).toLocaleString("ne-NP", { style: "currency", currency: "NPR", minimumFractionDigits: 2 });
 
 const monthMeta = (value) => {
   const d = new Date(value);

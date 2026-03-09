@@ -4,6 +4,7 @@ import {
   getTransactions,
   createTransaction,
   getSummary,
+  downloadReceipt,
 } from "../api/transactions";
 
 const Transactions = () => {
@@ -45,6 +46,24 @@ const Transactions = () => {
       description: "",
     });
     loadTransactions();
+  };
+
+  const handleDownloadReceipt = async (tx) => {
+    try {
+      const res = await downloadReceipt(tx.id);
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `receipt_${tx.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download receipt", err);
+      alert("Unable to download receipt.");
+    }
   };
 
   useEffect(() => {
@@ -211,9 +230,25 @@ const Transactions = () => {
               borderRadius: 8,
             }}
           >
-            <strong>{t.transaction_type}</strong>  
+            <strong>{t.transaction_type}</strong>
             <span style={{ float: "right" }}>Rs {t.amount}</span>
             <p style={{ margin: 0 }}>{t.description}</p>
+            {t.status === "PAID" && (
+              <button
+                type="button"
+                style={{
+                  marginTop: 8,
+                  padding: "6px 10px",
+                  background: "#111827",
+                  color: "white",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                }}
+                onClick={() => handleDownloadReceipt(t)}
+              >
+                Download Receipt
+              </button>
+            )}
           </div>
         ))}
       </div>

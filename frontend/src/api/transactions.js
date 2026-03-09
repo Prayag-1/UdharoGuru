@@ -12,3 +12,6 @@ export const getSummary = (customerId) =>
   api.get("transactions/summary/", {
     params: { customer: customerId },
   });
+
+export const downloadReceipt = (id) =>
+  api.get(`transactions/${id}/receipt/`, { responseType: "blob" });

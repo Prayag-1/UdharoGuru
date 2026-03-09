@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'ocr',
     'accounts',
     'private',
+    'notifications',
     'rest_framework_simplejwt.token_blacklist',
 ]
 
