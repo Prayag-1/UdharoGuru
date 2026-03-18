@@ -7,6 +7,9 @@ from rest_framework.routers import DefaultRouter
 from core.views import (
     CustomerViewSet,
     MonthlySummaryView,
+    ProductViewSet,
+    CreditSaleViewSet,
+    PaymentViewSet,
     TopDebtorsView,
     TotalOutstandingView,
     TransactionViewSet,
@@ -15,6 +18,9 @@ from core.views import (
 router = DefaultRouter()
 router.register(r"customers", CustomerViewSet, basename="customers")
 router.register(r"transactions", TransactionViewSet, basename="transactions")
+router.register(r"products", ProductViewSet, basename="products")
+router.register(r"credit-sales", CreditSaleViewSet, basename="credit-sales")
+router.register(r"payments", PaymentViewSet, basename="payments")
 
 urlpatterns = [
     path("admin/", admin.site.urls),

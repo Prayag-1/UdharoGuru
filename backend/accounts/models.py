@@ -165,3 +165,31 @@ class BusinessKYC(models.Model):
 
     def __str__(self):
         return f"KYC for {self.user.email}"
+
+
+class BusinessProfile(models.Model):
+    KYC_STATUS = (
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    )
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='business_profile',
+    )
+    business_name = models.CharField(max_length=255)
+    owner_name = models.CharField(max_length=255)
+    phone = models.CharField(max_length=50)
+    email = models.EmailField()
+    address = models.TextField()
+    business_type = models.CharField(max_length=100)
+    logo = models.ImageField(upload_to="business_logos/", null=True, blank=True)
+    pan_vat_number = models.CharField(max_length=100)
+    kyc_status = models.CharField(max_length=10, choices=KYC_STATUS, default='PENDING')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.business_name} ({self.user.email})"

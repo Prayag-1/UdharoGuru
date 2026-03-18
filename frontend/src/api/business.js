@@ -12,6 +12,18 @@ export const submitBusinessKyc = (formData) =>
     headers: { "Content-Type": "multipart/form-data" },
   });
 
+export const getBusinessProfile = () => api.get("business/profile/");
+
+export const createBusinessProfile = (formData) =>
+  api.post("business/profile/", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+export const updateBusinessProfile = (formData) =>
+  api.patch("business/profile/", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
 export const uploadBusinessOcr = (formData) => api.post("business/ocr/upload/", formData);
 
 export const listBusinessOcr = () => api.get("business/ocr/");

@@ -5,10 +5,11 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import BusinessKYC, BusinessPayment
+from .models import BusinessKYC, BusinessPayment, BusinessProfile
 from .serializers import (
     BusinessKYCSerializer,
     BusinessPaymentSerializer,
+    BusinessProfileSerializer,
     MeSerializer,
     RegisterSerializer,
     SimpleTokenObtainPairSerializer,
@@ -167,3 +168,49 @@ class BusinessStatusView(BusinessOnlyMixin, APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class BusinessProfileView(BusinessOnlyMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        forbidden = self._ensure_business(request)
+        if forbidden:
+            return forbidden
+
+        profile = BusinessProfile.objects.filter(user=request.user).first()
+        if not profile:
+            return Response({"detail": "Business profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(BusinessProfileSerializer(profile).data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        forbidden = self._ensure_business(request)
+        if forbidden:
+            return forbidden
+
+        if BusinessProfile.objects.filter(user=request.user).exists():
+            return Response({"detail": "Business profile already exists."}, status=status.HTTP_409_CONFLICT)
+
+        serializer = BusinessProfileSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        profile = serializer.save()
+        return Response(BusinessProfileSerializer(profile).data, status=status.HTTP_201_CREATED)
+
+    def patch(self, request):
+        forbidden = self._ensure_business(request)
+        if forbidden:
+            return forbidden
+
+        profile = BusinessProfile.objects.filter(user=request.user).first()
+        if not profile:
+            return Response({"detail": "Business profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = BusinessProfileSerializer(
+            profile,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        profile = serializer.save()
+        return Response(BusinessProfileSerializer(profile).data, status=status.HTTP_200_OK)

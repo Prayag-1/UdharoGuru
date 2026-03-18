@@ -9,6 +9,14 @@ import BusinessDashboard from "./pages/business/BusinessDashboard";
 import BusinessLedger from "./pages/business/BusinessLedger";
 import Payment from "./pages/business/Payment";
 import KycForm from "./pages/business/KycForm";
+import BusinessProfileSetup from "./pages/business/BusinessProfileSetup";
+import CustomersPage from "./pages/business/CustomersPage";
+import CustomerProfile from "./pages/business/CustomerProfile";
+import ProductsPage from "./pages/business/ProductsPage";
+import CreditSalesPage from "./pages/business/CreditSalesPage";
+import CreateCreditSale from "./pages/business/CreateCreditSale";
+import CreditSaleDetail from "./pages/business/CreditSaleDetail";
+import PaymentsPage from "./pages/business/PaymentsPage";
 import PendingVerification from "./pages/business/PendingVerification";
 import Rejected from "./pages/business/Rejected";
 import OcrList from "./pages/business/OcrList";
@@ -34,6 +42,14 @@ function App() {
           <Route path="/business/dashboard" element={<BusinessDashboard />} />
           <Route path="/business/ledger" element={<BusinessLedger />} />
           <Route path="/business/payment" element={<Payment />} />
+          <Route path="/business/profile" element={<BusinessProfileSetup />} />
+          <Route path="/business/customers" element={<CustomersPage />} />
+          <Route path="/business/customers/:id" element={<CustomerProfile />} />
+          <Route path="/business/products" element={<ProductsPage />} />
+          <Route path="/business/credit-sales" element={<CreditSalesPage />} />
+          <Route path="/business/credit-sales/create" element={<CreateCreditSale />} />
+          <Route path="/business/credit-sales/:id" element={<CreditSaleDetail />} />
+          <Route path="/business/payments" element={<PaymentsPage />} />
           <Route path="/business/kyc" element={<KycForm />} />
           <Route path="/business/kyc/review" element={<KycForm />} />
           <Route path="/business/pending" element={<PendingVerification />} />

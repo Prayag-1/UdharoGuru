@@ -17,3 +17,16 @@ class IsBusinessAccount(BasePermission):
             self.message = "Business KYC approval required."
             return False
         return True
+
+
+class IsBusinessUser(BasePermission):
+    message = "Business account required."
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+        if getattr(user, "account_type", "").upper() != "BUSINESS":
+            self.message = "Business account required."
+            return False
+        return True

@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import BusinessKYC, BusinessPayment
+from .models import BusinessKYC, BusinessPayment, BusinessProfile
 
 User = get_user_model()
 
@@ -143,3 +143,11 @@ class BusinessKYCAdmin(admin.ModelAdmin):
         count += 1
     self.message_user(request, f"Rejected {count} KYC record(s).")
   reject_kyc.short_description = "Reject KYC"
+
+
+@admin.register(BusinessProfile)
+class BusinessProfileAdmin(admin.ModelAdmin):
+  list_display = ("business_name", "user", "owner_name", "phone", "email", "kyc_status", "created_at")
+  list_filter = ("kyc_status",)
+  search_fields = ("business_name", "owner_name", "email", "phone", "pan_vat_number", "user__email")
+  readonly_fields = ("created_at", "updated_at")

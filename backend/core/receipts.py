@@ -32,7 +32,8 @@ def generate_settlement_receipt(transaction):
 
     settled_at = transaction.settled_at or timezone.now()
     payer = transaction.customer.name
-    receiver = transaction.customer.owner.full_name or transaction.customer.owner.email
+    business = transaction.customer.business
+    receiver = business.owner_name or business.business_name or business.user.email
 
     c = canvas.Canvas(str(receipt_path), pagesize=A4)
     width, height = A4

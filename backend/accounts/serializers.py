@@ -4,7 +4,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import APIException
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import BusinessKYC, BusinessPayment, User
+from .models import BusinessKYC, BusinessPayment, BusinessProfile, User
 
 
 class ConflictError(APIException):
@@ -184,3 +184,43 @@ class BusinessKYCSerializer(serializers.ModelSerializer):
             setattr(instance, key, value)
         instance.save()
         return instance
+
+
+class BusinessProfileSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+    logo = serializers.ImageField(required=False, allow_null=True)
+
+    class Meta:
+        model = BusinessProfile
+        fields = (
+            "id",
+            "user",
+            "business_name",
+            "owner_name",
+            "phone",
+            "email",
+            "address",
+            "business_type",
+            "logo",
+            "pan_vat_number",
+            "kyc_status",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "user", "kyc_status", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and getattr(user, "account_type", None) != "BUSINESS":
+            raise serializers.ValidationError("Business account required.")
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user:
+            raise serializers.ValidationError("Authentication required.")
+        if BusinessProfile.objects.filter(user=user).exists():
+            raise serializers.ValidationError("Business profile already exists.")
+        return BusinessProfile.objects.create(user=user, **validated_data)
