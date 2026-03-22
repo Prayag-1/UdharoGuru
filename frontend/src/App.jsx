@@ -16,6 +16,7 @@ import ProductsPage from "./pages/business/ProductsPage";
 import CreditSalesPage from "./pages/business/CreditSalesPage";
 import CreateCreditSale from "./pages/business/CreateCreditSale";
 import CreditSaleDetail from "./pages/business/CreditSaleDetail";
+import OCRUpload from "./pages/business/OCRUpload";
 import PaymentsPage from "./pages/business/PaymentsPage";
 import PendingVerification from "./pages/business/PendingVerification";
 import Rejected from "./pages/business/Rejected";
@@ -49,6 +50,7 @@ function App() {
           <Route path="/business/credit-sales" element={<CreditSalesPage />} />
           <Route path="/business/credit-sales/create" element={<CreateCreditSale />} />
           <Route path="/business/credit-sales/:id" element={<CreditSaleDetail />} />
+          <Route path="/business/ocr/upload" element={<OCRUpload />} />
           <Route path="/business/payments" element={<PaymentsPage />} />
           <Route path="/business/kyc" element={<KycForm />} />
           <Route path="/business/kyc/review" element={<KycForm />} />

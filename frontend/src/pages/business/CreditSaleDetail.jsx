@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getCreditSale, recordPayment, deleteCreditSale } from "../../api/creditSales";
+import { getCreditSale, recordPayment, deleteCreditSale, downloadInvoice } from "../../api/creditSales";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 
 const formatMoney = (value) => {
@@ -32,6 +32,7 @@ export default function CreditSaleDetail() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -102,6 +103,17 @@ export default function CreditSaleDetail() {
     }
   };
 
+  const handleDownloadInvoice = async () => {
+    setDownloadingInvoice(true);
+    try {
+      await downloadInvoice(id);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to download invoice");
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -155,21 +167,40 @@ export default function CreditSaleDetail() {
           >
             ← Back to Credit Sales
           </button>
-          <button
-            onClick={handleDelete}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "1px solid #fecdd3",
-              background: "#fff1f2",
-              color: "#b91c1c",
-              fontWeight: 700,
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            Delete Sale
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={handleDownloadInvoice}
+              disabled={downloadingInvoice}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #dbeafe",
+                background: "#eff6ff",
+                color: "#1e40af",
+                fontWeight: 700,
+                cursor: downloadingInvoice ? "not-allowed" : "pointer",
+                fontSize: 13,
+                opacity: downloadingInvoice ? 0.7 : 1,
+              }}
+            >
+              {downloadingInvoice ? "Generating..." : "📄 Download Invoice"}
+            </button>
+            <button
+              onClick={handleDelete}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #fecdd3",
+                background: "#fff1f2",
+                color: "#b91c1c",
+                fontWeight: 700,
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              Delete Sale
+            </button>
+          </div>
         </div>
 
         {error && (

@@ -13,6 +13,7 @@ from core.views import (
     TopDebtorsView,
     TotalOutstandingView,
     TransactionViewSet,
+    BusinessDashboardView,
 )
 
 router = DefaultRouter()
@@ -25,6 +26,7 @@ router.register(r"payments", PaymentViewSet, basename="payments")
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
+    path("api/business/dashboard/", BusinessDashboardView.as_view()),
     path("api/business/", include("accounts.business_urls")),
     path("api/private/", include("private.urls")),
     path("api/", include("notifications.urls")),

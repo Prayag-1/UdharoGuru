@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { createProduct, deleteProduct, getProducts, updateProduct } from "../../api/products";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
+import BusinessNav from "../../components/BusinessNav";
 
 const inputStyle = {
   border: "1px solid #d7def0",
@@ -99,7 +100,9 @@ export default function ProductsPage() {
   }, [products]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
+    <>
+      <BusinessNav />
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gap: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
@@ -225,6 +228,7 @@ export default function ProductsPage() {
         initialData={editing}
       />
     </div>
+    </>
   );
 }
 

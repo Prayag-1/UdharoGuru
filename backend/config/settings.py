@@ -148,6 +148,11 @@ CORS_ALLOW_ALL_ORIGINS = True
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 AUTH_USER_MODEL = 'accounts.User'
+
+AUTHENTICATION_BACKENDS = [
+    'accounts.backends.EmailBackend',
+]
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',

@@ -1,244 +1,423 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
+import { getDashboardData } from "../../api/dashboard";
+import BusinessNav from "../../components/BusinessNav";
 
-import { getBusinessLedger, getBusinessLedgerSummary, listBusinessOcr } from "../../api/business";
-import { useAuth } from "../../context/AuthContext";
-import { useBusinessGate } from "../../hooks/useBusinessGate";
-import { LedgerHeader, LedgerRow, formatMoney } from "./components/LedgerRow";
-
-const initialSummary = {
-  receivable: 0,
-  payable: 0,
-  net: 0,
-  pending_ocr_drafts: 0,
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
 };
 
-const deriveSummary = (rows, draftCount = 0) => {
-  let receivable = 0;
-  let payable = 0;
-  rows.forEach((tx) => {
-    if (tx.is_settled === true) return;
-    const amount = Number(tx.amount || 0);
-    if (Number.isNaN(amount)) return;
-    const type = (tx.transaction_type || "").toUpperCase();
-    if (type === "CREDIT") receivable += amount;
-    else if (type === "DEBIT") payable += amount;
-  });
-  return {
-    receivable,
-    payable,
-    net: receivable - payable,
-    pending_ocr_drafts: draftCount || 0,
-  };
-};
-
-const normalizeSummaryResponse = (data) => {
-  const toNumber = (val) => {
-    const num = Number(val || 0);
-    return Number.isNaN(num) ? 0 : num;
-  };
-  const receivable = toNumber(data?.receivable);
-  const payable = toNumber(data?.payable);
-  const net = data && Object.prototype.hasOwnProperty.call(data, "net") ? toNumber(data.net) : receivable - payable;
-  const pending = Number.isFinite(Number(data?.pending_ocr_drafts))
-    ? Number(data.pending_ocr_drafts)
-    : 0;
-  return {
-    receivable,
-    payable,
-    net,
-    pending_ocr_drafts: pending,
-  };
+const getStatusColor = (status) => {
+  switch (status) {
+    case "PENDING":
+      return { bg: "#fef3c7", text: "#b45309", icon: "⏳" };
+    case "PARTIAL":
+      return { bg: "#dbeafe", text: "#1e40af", icon: "📊" };
+    case "PAID":
+      return { bg: "#dcfce7", text: "#15803d", icon: "✓" };
+    default:
+      return { bg: "#f3f4f6", text: "#374151", icon: "•" };
+  }
 };
 
 export default function BusinessDashboard() {
+  const navigate = useNavigate();
   const { user } = useAuth();
-  const gate = useBusinessGate("/business/dashboard");
+  const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [summary, setSummary] = useState(initialSummary);
-  const [summarySource, setSummarySource] = useState("api");
-  const [ledger, setLedger] = useState([]);
-  const hasFetched = useRef(false);
-
-  const verified = user?.business_status === "APPROVED";
-  const canView = user && user.account_type === "BUSINESS" && verified;
-  const gateMessage = !user
-    ? "Login required to view the business dashboard."
-    : user.account_type !== "BUSINESS"
-      ? "Business account required."
-      : `Business dashboard is available after KYC approval. Current status: ${user.business_status || "pending"}.`;
-
-  const fetchDraftCount = async () => {
-    try {
-      const { data } = await listBusinessOcr();
-      const docs = Array.isArray(data) ? data : data?.results || [];
-      return docs.filter((doc) => (doc.status || "").toUpperCase() === "DRAFT").length;
-    } catch {
-      return 0;
-    }
-  };
-
-  const loadDashboard = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const ledgerPromise = getBusinessLedger();
-      const summaryPromise = getBusinessLedgerSummary().catch((err) => ({ __error: err }));
-      const [ledgerRes, summaryRes] = await Promise.all([ledgerPromise, summaryPromise]);
-
-      const ledgerRows = Array.isArray(ledgerRes.data) ? ledgerRes.data : ledgerRes.data?.results || [];
-      setLedger(ledgerRows);
-
-      if (summaryRes && !summaryRes.__error && summaryRes.data) {
-        setSummary(normalizeSummaryResponse(summaryRes.data));
-        setSummarySource("api");
-      } else {
-        const draftCount = await fetchDraftCount();
-        setSummary(deriveSummary(ledgerRows, draftCount));
-        setSummarySource("client");
-      }
-    } catch (err) {
-      setError("Unable to load dashboard data right now.");
-      setLedger([]);
-      setSummary(initialSummary);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
-    if (gate.loading) return;
-    if (!canView) {
-      setLoading(false);
-      return;
+    if (!user) return;
+    if (user.account_type !== "BUSINESS") {
+      navigate(resolveHomeRoute(user), { replace: true });
     }
-    if (hasFetched.current) return;
-    hasFetched.current = true;
+  }, [user, navigate]);
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await getDashboardData();
+        setDashboard(response.data);
+      } catch (err) {
+        console.error("Failed to load dashboard:", err);
+        setError("Failed to load dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadDashboard();
-  }, [gate.loading, canView]);
+  }, []);
 
-  const recentLedger = useMemo(() => {
-    const sorted = [...ledger];
-    sorted.sort((a, b) => {
-      const aDate = new Date(a.transaction_date || a.created_at || 0).getTime();
-      const bDate = new Date(b.transaction_date || b.created_at || 0).getTime();
-      return bDate - aDate;
-    });
-    return sorted.slice(0, 5);
-  }, [ledger]);
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ color: "#64748b" }}>Loading dashboard...</div>
+      </div>
+    );
+  }
 
-  return (
-    <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gap: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 26, fontWeight: 900, color: "#0f172a" }}>Business Dashboard</div>
-            <div style={{ color: "#475569" }}>
-              Instant financial clarity for your ledger and OCR drafts.
-            </div>
+  if (error) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <div style={{ padding: 16, borderRadius: 12, border: "1px solid #fecdd3", background: "#fff1f2", color: "#b91c1c", fontWeight: 700 }}>
+            {error}
           </div>
-          <Link
-            to="/business/ocr"
+        </div>
+      </div>
+    );
+  }
+
+  if (!dashboard) return null;
+
+  const metrics = dashboard.metrics || {};
+  const salesByStatus = dashboard.sales_by_status || {};
+  const recentSales = dashboard.recent_credit_sales || [];
+  const recentPayments = dashboard.recent_payments || [];
+  const message = dashboard.message;
+
+  // Show onboarding message if no profile exists
+  if (message) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ maxWidth: 500, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>
+            Complete Your Profile
+          </div>
+          <div style={{ color: "#64748b", marginBottom: 24, fontSize: 15 }}>
+            {message}
+          </div>
+          <a 
+            href="/business/profile"
             style={{
-              color: "#0f172a",
-              fontWeight: 800,
-              border: "1px solid #cbd5e1",
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: "#ffffff",
+              display: "inline-block",
+              background: "#1e40af",
+              color: "white",
+              padding: "12px 24px",
+              borderRadius: 8,
               textDecoration: "none",
+              fontWeight: 600,
             }}
           >
-            View OCR
-          </Link>
+            Set Up Profile
+          </a>
         </div>
+      </div>
+    );
+  }
 
-        {!canView ? (
-          <div style={{ padding: 16, borderRadius: 12, border: "1px solid #e2e8f0", background: "#ffffff", color: "#0f172a", fontWeight: 700 }}>
-            {gateMessage}
-          </div>
-        ) : (
-          <>
-            {error && (
-              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #fecdd3", background: "#fff1f2", color: "#b91c1c", fontWeight: 700 }}>
-                {error}
+  return (
+    <>
+      <BusinessNav />
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto", display: "grid", gap: 24 }}>
+          {/* Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#0f172a", marginBottom: 4 }}>
+                Dashboard
               </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 12 }}>
-              <SummaryCard label="Total receivable" value={formatMoney(summary.receivable)} loading={loading} />
-              <SummaryCard label="Total payable" value={formatMoney(summary.payable)} loading={loading} />
-              <SummaryCard label="Net balance" value={formatMoney(summary.net)} loading={loading} />
-              <SummaryCard label="Pending OCR drafts" value={summary.pending_ocr_drafts} loading={loading} />
+              <div style={{ color: "#64748b", fontSize: 14 }}>
+                Business overview and recent activity
+              </div>
             </div>
-            <div style={{ color: "#94a3b8", fontSize: 12, fontWeight: 700 }}>
-              {summarySource === "api" ? "Using summary endpoint" : "Summary derived from ledger and OCR drafts"}
-            </div>
+            <button
+              onClick={() => navigate("/business/ocr/upload")}
+              style={{
+                background: "linear-gradient(135deg, #2563eb 0%, #1e40af 100%)",
+                color: "white",
+                border: "none",
+                padding: "12px 24px",
+                borderRadius: 8,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontSize: 14,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                transition: "all 0.2s",
+                whiteSpace: "nowrap",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.boxShadow = "0 8px 16px rgba(37, 99, 235, 0.3)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            >
+              <span style={{ fontSize: 18 }}>📸</span>
+              <span>Upload Receipt</span>
+            </button>
+          </div>
 
-            <div style={{ border: "1px solid #e2e8f0", background: "#ffffff", borderRadius: 14, padding: 14, display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 900, fontSize: 18, color: "#0f172a" }}>Latest ledger activity</div>
-                  <div style={{ color: "#475569" }}>Most recent five transactions.</div>
+          {/* KPI Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+            {/* Total Sales */}
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                  Total Sales
                 </div>
-                <Link
-                  to="/business/ledger"
+                <div style={{ fontSize: 24 }}>📊</div>
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a" }}>
+                {formatCurrency(metrics.total_sales)}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>
+                All credit sales value
+              </div>
+            </div>
+
+            {/* Payments Collected */}
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                  Collected
+                </div>
+                <div style={{ fontSize: 24 }}>💚</div>
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#15803d" }}>
+                {formatCurrency(metrics.payments_collected)}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>
+                Total payments received
+              </div>
+            </div>
+
+            {/* Outstanding Credit */}
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                  Outstanding
+                </div>
+                <div style={{ fontSize: 24 }}>⚠️</div>
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#b45309" }}>
+                {formatCurrency(metrics.outstanding_credit)}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>
+                Amount still due
+              </div>
+            </div>
+
+            {/* Total Customers */}
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>
+                  Customers
+                </div>
+                <div style={{ fontSize: 24 }}>👥</div>
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a" }}>
+                {metrics.total_customers}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>
+                Active customers
+              </div>
+            </div>
+          </div>
+
+          {/* Sales Status */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginBottom: 16, textTransform: "uppercase" }}>
+                Pending Sales
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#b45309" }}>
+                {salesByStatus.pending || 0}
+              </div>
+            </div>
+
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginBottom: 16, textTransform: "uppercase" }}>
+                Partial Payments
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#1e40af" }}>
+                {salesByStatus.partial || 0}
+              </div>
+            </div>
+
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginBottom: 16, textTransform: "uppercase" }}>
+                Settled Sales
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#15803d" }}>
+                {salesByStatus.paid || 0}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Activity */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {/* Recent Credit Sales */}
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Recent Credit Sales</span>
+                <button
+                  onClick={() => navigate("/business/credit-sales")}
                   style={{
-                    color: "#0f172a",
-                    fontWeight: 800,
-                    border: "1px solid #cbd5e1",
-                    padding: "8px 10px",
-                    borderRadius: 10,
+                    background: "none",
+                    border: "none",
+                    color: "#2563eb",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
                     textDecoration: "none",
-                    background: "#f8fafc",
                   }}
                 >
-                  View all ledger
-                </Link>
+                  View All →
+                </button>
               </div>
 
-              {loading ? (
-                <LedgerPlaceholder />
-              ) : recentLedger.length === 0 ? (
-                <div style={{ padding: 14, borderRadius: 12, border: "1px dashed #cbd5e1", color: "#475569", textAlign: "center" }}>
-                  No transactions yet. Confirm OCR receipts or add entries in your ledger.
+              {recentSales.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "32px 16px", color: "#a0aec0" }}>
+                  No recent sales
                 </div>
               ) : (
-                <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-                  <LedgerHeader />
-                  {recentLedger.map((tx) => (
-                    <LedgerRow key={tx.id} tx={tx} />
-                  ))}
+                <div style={{ display: "grid", gap: 12 }}>
+                  {recentSales.map((sale) => {
+                    const statusColor = getStatusColor(sale.status);
+                    return (
+                      <div
+                        key={sale.id}
+                        onClick={() => navigate(`/business/credit-sales/${sale.id}`)}
+                        style={{
+                          padding: 12,
+                          borderRadius: 8,
+                          border: "1px solid #e2e8f0",
+                          cursor: "pointer",
+                          transition: "all 0.2s",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "#f8fafc";
+                          e.currentTarget.style.borderColor = "#cbd5e1";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "transparent";
+                          e.currentTarget.style.borderColor = "#e2e8f0";
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                            {sale.invoice_number}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                            {sale.customer_name}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                            {formatCurrency(sale.total_amount)}
+                          </div>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "4px 8px",
+                              borderRadius: 4,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              background: statusColor.bg,
+                              color: statusColor.text,
+                              marginTop: 4,
+                            }}
+                          >
+                            {statusColor.icon} {sale.status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
-          </>
-        )}
+
+            {/* Recent Payments */}
+            <div style={{ background: "#ffffff", borderRadius: 14, padding: 24, border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Recent Payments</span>
+                <button
+                  onClick={() => navigate("/business/payments")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#2563eb",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    textDecoration: "none",
+                  }}
+                >
+                  View All →
+                </button>
+              </div>
+
+              {recentPayments.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "32px 16px", color: "#a0aec0" }}>
+                  No recent payments
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {recentPayments.map((payment) => {
+                    const methodIcons = {
+                      CASH: "💵",
+                      BANK_TRANSFER: "🏦",
+                      CHEQUE: "✓",
+                      MOBILE_MONEY: "📱",
+                      OTHER: "📝",
+                    };
+                    return (
+                      <div
+                        key={payment.id}
+                        style={{
+                          padding: 12,
+                          borderRadius: 8,
+                          border: "1px solid #e2e8f0",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                            {payment.customer_name}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                            {methodIcons[payment.payment_method] || "📝"} {payment.payment_method}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#15803d" }}>
+                            {formatCurrency(payment.amount)}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                            {new Date(payment.payment_date).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  );
-}
-
-function SummaryCard({ label, value, loading }) {
-  return (
-    <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, display: "grid", gap: 6 }}>
-      <div style={{ color: "#475569", fontWeight: 700, fontSize: 13 }}>{label}</div>
-      {loading ? (
-        <div style={{ height: 26, borderRadius: 8, background: "#e2e8f0" }} />
-      ) : (
-        <div style={{ fontSize: 22, fontWeight: 900, color: "#0f172a" }}>{value}</div>
-      )}
-    </div>
-  );
-}
-
-function LedgerPlaceholder() {
-  return (
-    <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#f8fafc", padding: 12, display: "grid", gap: 8 }}>
-      {[...Array(4)].map((_, idx) => (
-        <div key={idx} style={{ height: 18, borderRadius: 8, background: "#e2e8f0" }} />
-      ))}
-    </div>
+    </>
   );
 }

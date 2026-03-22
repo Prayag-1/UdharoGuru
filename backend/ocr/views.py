@@ -6,10 +6,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsBusinessAccount
+from accounts.models import BusinessProfile
+from core.models import Customer
 
 from .models import BusinessTransaction, OCRDocument, OCRScan
 from .serializers import OCRConfirmSerializer, OCRDocumentSerializer
-from .utils import extract_amount, extract_date, extract_merchant, run_ocr
+from .utils import extract_amount, extract_date, extract_merchant, run_ocr, parse_ocr_text_to_credit_sale
 
 
 def serialize_document(document: OCRDocument):
@@ -158,4 +160,88 @@ class BusinessOCRConfirmView(APIView):
         response_data = serialize_document(document)
         response_data["transaction_id"] = transaction.id
         return Response(response_data, status=201)
+
+
+class CreditSaleOCRProcessView(APIView):
+    """
+    LAYER 3 — OCR Processing for Credit Sales
+    
+    Endpoint: POST /api/ocr/process-credit-sale/
+    
+    Flow:
+    1. User uploads image
+    2. Extract text (Layer 1)
+    3. Parse into structured data (Layer 2)
+    4. Return for user confirmation (Layer 3 UI)
+    
+    IMPORTANT: OCR does NOT create credit sales.
+    User must confirm in frontend form and then POST to /api/credit-sales/
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        # Verify business user
+        if getattr(request.user, "account_type", "").upper() != "BUSINESS":
+            return Response(
+                {"detail": "Business account required. Only business users can upload receipts."},
+                status=403
+            )
+
+        # Get image from request
+        image = request.FILES.get("image")
+        if not image:
+            return Response(
+                {"detail": "Image file is required. Please upload a bill or receipt image."},
+                status=400
+            )
+
+        # Get business profile
+        profile = BusinessProfile.objects.filter(user=request.user).first()
+        if not profile:
+            return Response(
+                {"detail": "Business profile not found. Complete your profile setup first."},
+                status=404
+            )
+
+        try:
+            # LAYER 1 — Text Extraction
+            raw_text = run_ocr(image)
+            if not raw_text or not raw_text.strip():
+                return Response(
+                    {
+                        "status": "error",
+                        "message": "Could not extract text from image. Try a clearer image.",
+                        "raw_text": "",
+                        "parsed_data": None
+                    },
+                    status=400
+                )
+
+            # LAYER 2 — Data Parsing
+            parsed_data = parse_ocr_text_to_credit_sale(raw_text)
+
+            # LAYER 3 — Return for User Confirmation
+            return Response(
+                {
+                    "status": "success",
+                    "message": "OCR processing complete. Review and confirm the data below.",
+                    "raw_text": raw_text,
+                    "parsed_data": parsed_data,
+                    "confidence": parsed_data.get("confidence", "medium"),
+                    "next_step": "Edit fields if needed, then submit via credit sale form"
+                },
+                status=200
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "status": "error",
+                    "message": f"Error processing image: {str(e)}",
+                    "parsed_data": None
+                },
+                status=500
+            )
+
 

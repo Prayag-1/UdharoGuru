@@ -75,14 +75,22 @@ class MeSerializer(serializers.ModelSerializer):
 
 class SimpleTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        email = attrs.get("email") or attrs.get(self.username_field)
+        # Accept both 'email' and 'username' fields
+        email = attrs.get("email") or attrs.get(self.username_field) or attrs.get("username")
         password = attrs.get("password")
+        
+        if not email:
+            raise serializers.ValidationError({"detail": "Email or username is required."})
+        if not password:
+            raise serializers.ValidationError({"detail": "Password is required."})
+        
         user_lookup = User.objects.filter(email=email).first()
         if not user_lookup:
             raise serializers.ValidationError({"detail": "User not found."})
         if not user_lookup.is_active:
             raise serializers.ValidationError({"detail": "This account is inactive."})
 
+        # Use our custom EmailBackend which accepts email parameter
         user = authenticate(self.context.get("request"), email=email, password=password)
         if not user:
             raise serializers.ValidationError({"detail": "Invalid credentials."})

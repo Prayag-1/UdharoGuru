@@ -412,6 +412,26 @@ class CreditSaleViewSet(viewsets.ModelViewSet):
             "partial_count": partial_count,
             "paid_count": paid_count,
         })
+    
+    @action(detail=True, methods=["get"])
+    def invoice(self, request, pk=None):
+        """Generate and return PDF invoice for a credit sale."""
+        from .invoices import generate_invoice_pdf
+        
+        sale = self.get_object()
+        
+        try:
+            # Generate PDF
+            pdf_buffer = generate_invoice_pdf(sale)
+            
+            # Return PDF as file download
+            filename = f'{sale.invoice_number.replace("/", "-")}.pdf'
+            response = FileResponse(pdf_buffer, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+        except Exception as e:
+            raise DRFValidationError({"invoice": f"Failed to generate invoice: {str(e)}"})
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -570,3 +590,115 @@ class MonthlySummaryView(APIView):
         ).order_by("month")
 
         return Response(qs)
+
+
+class BusinessDashboardView(APIView):
+    """Dashboard analytics for business overview."""
+    permission_classes = [IsAuthenticated, IsBusinessUser]
+
+    def get(self, request):
+        profile = BusinessProfile.objects.filter(user=request.user).first()
+        
+        # If no profile exists, return empty dashboard data
+        if not profile:
+            return Response({
+                "metrics": {
+                    "total_sales": 0,
+                    "outstanding_credit": 0,
+                    "payments_collected": 0,
+                    "total_customers": 0,
+                },
+                "sales_by_status": {
+                    "pending": 0,
+                    "partial": 0,
+                    "paid": 0,
+                },
+                "recent_credit_sales": [],
+                "recent_payments": [],
+                "message": "Complete your business profile to start tracking sales and payments.",
+            })
+        
+        # Total sales
+        total_sales = CreditSale.objects.filter(
+            business=profile
+        ).aggregate(total=Sum("total_amount"))["total"] or 0
+        
+        # Payments collected
+        payments_collected = Payment.objects.filter(
+            business=profile
+        ).aggregate(total=Sum("amount"))["total"] or 0
+        
+        # Outstanding credit (amount still due)
+        outstanding_credit = CreditSale.objects.filter(
+            business=profile
+        ).aggregate(total=Sum("amount_due"))["total"] or 0
+        
+        # Total customers
+        total_customers = Customer.objects.filter(
+            business=profile
+        ).count()
+        
+        # Recent credit sales (last 5)
+        recent_sales = CreditSale.objects.filter(
+            business=profile
+        ).select_related("customer").order_by("-created_at")[:5]
+        
+        recent_sales_data = [
+            {
+                "id": sale.id,
+                "invoice_number": sale.invoice_number,
+                "customer_name": sale.customer.name,
+                "total_amount": float(sale.total_amount),
+                "amount_due": float(sale.amount_due),
+                "status": sale.status,
+                "created_at": sale.created_at.isoformat(),
+            }
+            for sale in recent_sales
+        ]
+        
+        # Recent payments (last 5)
+        recent_payments = Payment.objects.filter(
+            business=profile
+        ).select_related("customer", "credit_sale").order_by("-payment_date")[:5]
+        
+        recent_payments_data = [
+            {
+                "id": payment.id,
+                "customer_name": payment.customer.name,
+                "amount": float(payment.amount),
+                "payment_method": payment.get_payment_method_display(),
+                "invoice_number": payment.credit_sale.invoice_number if payment.credit_sale else "N/A",
+                "payment_date": payment.payment_date.isoformat(),
+            }
+            for payment in recent_payments
+        ]
+        
+        # Sales by status
+        pending_count = CreditSale.objects.filter(
+            business=profile,
+            status=CreditSale.PENDING
+        ).count()
+        partial_count = CreditSale.objects.filter(
+            business=profile,
+            status=CreditSale.PARTIAL
+        ).count()
+        paid_count = CreditSale.objects.filter(
+            business=profile,
+            status=CreditSale.PAID
+        ).count()
+        
+        return Response({
+            "metrics": {
+                "total_sales": float(total_sales),
+                "outstanding_credit": float(outstanding_credit),
+                "payments_collected": float(payments_collected),
+                "total_customers": total_customers,
+            },
+            "sales_by_status": {
+                "pending": pending_count,
+                "partial": partial_count,
+                "paid": paid_count,
+            },
+            "recent_credit_sales": recent_sales_data,
+            "recent_payments": recent_payments_data,
+        })

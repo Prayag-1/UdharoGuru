@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { createCustomer, deleteCustomer, getCustomers, updateCustomer } from "../../api/customers";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 import AddCustomerModal from "./AddCustomerModal";
+import BusinessNav from "../../components/BusinessNav";
 
 const formatMoney = (value) => {
   const num = Number(value || 0);
@@ -78,7 +79,9 @@ export default function CustomersPage() {
   }, [customers]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
+    <>
+      <BusinessNav />
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gap: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
@@ -213,5 +216,6 @@ export default function CustomersPage() {
         initialData={editing}
       />
     </div>
+    </>
   );
 }

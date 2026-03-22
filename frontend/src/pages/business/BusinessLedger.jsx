@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessGate } from "../../hooks/useBusinessGate";
 import { LedgerHeader, LedgerRow, formatMoney } from "./components/LedgerRow";
+import BusinessNav from "../../components/BusinessNav";
 
 export default function BusinessLedger() {
   const { user } = useAuth();
@@ -159,7 +160,9 @@ export default function BusinessLedger() {
   const closeInvoiceView = () => setInvoiceView(null);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
+    <>
+      <BusinessNav />
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
@@ -272,6 +275,7 @@ export default function BusinessLedger() {
         onClose={closeInvoiceView}
       />
     </div>
+    </>
   );
 }
 

@@ -14,3 +14,29 @@ export const recordPayment = (id, amount) =>
 
 export const getPendingCreditSales = () => api.get("credit-sales/pending/");
 export const getCreditSalesSummary = () => api.get("credit-sales/summary/");
+
+export const downloadInvoice = async (id) => {
+  const response = await api.get(`credit-sales/${id}/invoice/`, {
+    responseType: 'blob'
+  });
+  
+  // Extract filename from response headers
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = 'invoice.pdf';
+  if (contentDisposition) {
+    const matches = contentDisposition.match(/filename="(.*)"/);
+    if (matches) filename = matches[1];
+  }
+  
+  // Create blob and download
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  link.parentElement.removeChild(link);
+  window.URL.revokeObjectURL(url);
+  
+  return response;
+};

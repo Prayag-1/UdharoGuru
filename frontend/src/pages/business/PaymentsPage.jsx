@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getPayments, getPaymentsSummary, deletePayment } from "../../api/payments";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 import RecordPaymentModal from "./RecordPaymentModal";
+import BusinessNav from "../../components/BusinessNav";
 
 const formatMoney = (value) => {
   const num = Number(value || 0);
@@ -84,7 +85,9 @@ export default function PaymentsPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
+    <>
+      <BusinessNav />
+      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gap: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
@@ -221,5 +224,6 @@ export default function PaymentsPage() {
 
       <RecordPaymentModal open={modalOpen} onClose={() => setModalOpen(false)} onPaymentRecorded={handlePaymentRecorded} />
     </div>
+    </>
   );
 }
