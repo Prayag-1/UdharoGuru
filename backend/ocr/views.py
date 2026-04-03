@@ -4,6 +4,8 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import tempfile
+import os
 
 from accounts.permissions import IsBusinessAccount
 from accounts.models import BusinessProfile
@@ -200,36 +202,81 @@ class CreditSaleOCRProcessView(APIView):
         profile = BusinessProfile.objects.filter(user=request.user).first()
         if not profile:
             return Response(
-                {"detail": "Business profile not found. Complete your profile setup first."},
+                {"detail": "Business profile not found. Please complete your profile setup first."},
                 status=404
             )
 
+        temp_path = None
         try:
             # LAYER 1 — Text Extraction
-            raw_text = run_ocr(image)
+            # Save uploaded image to temporary file since run_ocr expects a file path
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+                for chunk in image.chunks():
+                    tmp_file.write(chunk)
+                tmp_file.flush()
+                temp_path = tmp_file.name
+            
+            # Extract text with error handling
+            try:
+                raw_text = run_ocr(temp_path)
+            except Exception as e:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Failed to extract text from image: {str(e)}",
+                        "raw_text": "",
+                        "parsed_data": None,
+                        "confidence": "low"
+                    },
+                    status=400
+                )
+            
             if not raw_text or not raw_text.strip():
                 return Response(
                     {
                         "status": "error",
-                        "message": "Could not extract text from image. Try a clearer image.",
+                        "message": "Could not extract text from image. Please try a clearer, well-lit image of the bill.",
                         "raw_text": "",
-                        "parsed_data": None
+                        "parsed_data": None,
+                        "confidence": "low"
                     },
                     status=400
                 )
 
             # LAYER 2 — Data Parsing
-            parsed_data = parse_ocr_text_to_credit_sale(raw_text)
+            try:
+                parsed_data = parse_ocr_text_to_credit_sale(raw_text)
+            except Exception as e:
+                return Response(
+                    {
+                        "status": "error",
+                        "message": f"Failed to parse OCR data: {str(e)}",
+                        "raw_text": raw_text,
+                        "parsed_data": None,
+                        "confidence": "low"
+                    },
+                    status=500
+                )
+
+            # Ensure parsed_data has all required fields with proper types
+            if not parsed_data:
+                parsed_data = {
+                    "customer_name": "",
+                    "items": [],
+                    "total_amount": 0.0,
+                    "confidence": "low",
+                    "warning": "Failed to parse data"
+                }
 
             # LAYER 3 — Return for User Confirmation
             return Response(
                 {
                     "status": "success",
-                    "message": "OCR processing complete. Review and confirm the data below.",
+                    "message": "OCR processing complete. Please review and confirm the extracted data.",
                     "raw_text": raw_text,
                     "parsed_data": parsed_data,
                     "confidence": parsed_data.get("confidence", "medium"),
-                    "next_step": "Edit fields if needed, then submit via credit sale form"
+                    "next_step": "Review the extracted data, make any necessary edits, and submit the form to create a credit sale."
                 },
                 status=200
             )
@@ -238,10 +285,18 @@ class CreditSaleOCRProcessView(APIView):
             return Response(
                 {
                     "status": "error",
-                    "message": f"Error processing image: {str(e)}",
-                    "parsed_data": None
+                    "message": f"Unexpected error: {str(e)}",
+                    "parsed_data": None,
+                    "confidence": "low"
                 },
                 status=500
             )
+        finally:
+            # Clean up temporary file
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except Exception as e:
+                    print(f"Warning: Failed to clean up temp file: {e}")
 
 

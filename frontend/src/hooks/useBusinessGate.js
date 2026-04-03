@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { resolveHomeRoute, useAuth } from "../context/AuthContext";
@@ -6,7 +6,7 @@ import { resolveHomeRoute, useAuth } from "../context/AuthContext";
 const targetForStatus = (status) => {
   switch (status) {
     case "APPROVED":
-      return "/business/dashboard";
+      return null;
     case "REJECTED":
       return "/business/rejected";
     case "UNDER_REVIEW":
@@ -19,15 +19,20 @@ const targetForStatus = (status) => {
   }
 };
 
+const approvedRedirectPaths = new Set([
+  "/business/payment",
+  "/business/kyc",
+  "/business/pending",
+  "/business/rejected",
+]);
+
 export const useBusinessGate = (currentPath) => {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
-  const hasChecked = useRef(false);
   const [data, setData] = useState({ business_status: null, payment: null, kyc: null, rejection_reason: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (hasChecked.current) return;
     if (!user) {
       setLoading(false);
       return;
@@ -35,13 +40,14 @@ export const useBusinessGate = (currentPath) => {
     if (user.account_type !== "BUSINESS") {
       navigate(resolveHomeRoute(user), { replace: true });
       setLoading(false);
-      hasChecked.current = true;
       return;
     }
-    hasChecked.current = true;
+    let cancelled = false;
+    setLoading(true);
     const run = async () => {
       try {
         const profile = await refreshUser();
+        if (cancelled) return;
         const target = targetForStatus(profile?.business_status);
         if (profile) {
           setData({
@@ -52,17 +58,27 @@ export const useBusinessGate = (currentPath) => {
             kyc_status: profile.kyc_status,
           });
         }
+        if (profile?.business_status === "APPROVED" && approvedRedirectPaths.has(currentPath)) {
+          navigate("/business/dashboard", { replace: true });
+          return;
+        }
         if (target && target !== currentPath) {
           navigate(target, { replace: true });
         }
       } catch {
+        if (cancelled) return;
         navigate(resolveHomeRoute(user), { replace: true });
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
     run();
-  }, [user?.id, currentPath, navigate, refreshUser]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user, currentPath]);
 
   return { ...data, loading };
 };

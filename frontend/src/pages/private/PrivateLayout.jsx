@@ -64,6 +64,10 @@ export default function PrivateLayout() {
 
   const loadNotifications = async (opts = {}) => {
     const { silent = false } = opts;
+    if (!user) {
+      setNotifications([]);
+      return;
+    }
     if (!silent) {
       setNotifLoading(true);
       setNotifError(null);
@@ -83,14 +87,15 @@ export default function PrivateLayout() {
   };
 
   useEffect(() => {
+    if (!user) return;
     loadNotifications({ silent: true });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    if (notifOpen) {
+    if (user && notifOpen) {
       loadNotifications({ silent: true });
     }
-  }, [notifOpen]);
+  }, [notifOpen, user]);
 
   const inviteCode = user?.invite_code || "";
 
@@ -152,6 +157,49 @@ export default function PrivateLayout() {
     const timer = setTimeout(() => setCopyState("idle"), 2000);
     return () => clearTimeout(timer);
   }, [copyState]);
+
+  if (loading) {
+    return (
+      <div className={`private-layout ${theme === "dark" ? "dark" : ""}`}>
+        <header className="top-bar">
+          <div className="app-title">Udharo Guru</div>
+          <div className="user-menu">
+            <SkeletonBlock height={20} />
+          </div>
+        </header>
+
+        <div className="layout-shell">
+          <aside className="sidebar">
+            <div className="sidebar-nav">
+              {[...Array(5)].map((_, idx) => (
+                <SkeletonBlock key={idx} height={38} />
+              ))}
+            </div>
+            <div className="sidebar-section">
+              <SkeletonBlock height={32} />
+            </div>
+          </aside>
+
+          <main className="main-content">
+            <div className="dashboard-shell">
+              <div className="section-card">
+                <SkeletonBlock height={28} />
+              </div>
+              <div className="grid-3">
+                <SkeletonBlock height={96} />
+                <SkeletonBlock height={96} />
+                <SkeletonBlock height={96} />
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className={`private-layout ${theme === "dark" ? "dark" : ""}`}>

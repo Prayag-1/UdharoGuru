@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createCreditSale, getCreditSales } from "../../api/creditSales";
+import { createCreditSale, addItemToCreditSale } from "../../api/creditSales";
 import { getCustomers } from "../../api/customers";
 import { getProducts } from "../../api/products";
 import { useAuth } from "../../context/AuthContext";
@@ -161,26 +161,19 @@ export default function CreateCreditSale() {
       const response = await createCreditSale(payload);
       const saleId = response.data.id;
 
-      // Add items to the sale
-      const itemRequests = items.map((item) =>
-        fetch(`/api/credit-sales/${saleId}/add_item/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-          },
-          body: JSON.stringify({
-            product: item.product,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-          }),
+      // Add items to the sale using the API client
+      const addItemPromises = items.map((item) =>
+        addItemToCreditSale(saleId, {
+          product: item.product,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
         })
       );
 
-      await Promise.all(itemRequests);
+      await Promise.all(addItemPromises);
       navigate(`/business/credit-sales/${saleId}`);
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to create credit sale");
+      setError(err.response?.data?.detail || err.message || "Failed to create credit sale");
     } finally {
       setSubmitting(false);
     }

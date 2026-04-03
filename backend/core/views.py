@@ -299,8 +299,44 @@ class CreditSaleViewSet(viewsets.ModelViewSet):
         # Save the sale
         sale = serializer.save(business=profile)
         
-        # Reduce product stock
-        self._reduce_stock(sale)
+        # Recalculate totals to ensure consistency
+        sale.calculate_totals()
+        sale.save()
+        
+        # Reduce product stock if items exist
+        if sale.items.exists():
+            self._reduce_stock(sale)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Override retrieve to recalculate totals before returning."""
+        response = super().retrieve(request, *args, **kwargs)
+        
+        # Recalculate totals to ensure they're accurate
+        sale = self.get_object()
+        sale.calculate_totals()
+        sale.save()
+        
+        # Return updated serialized data
+        serializer = self.get_serializer(sale)
+        return Response(serializer.data)
+
+    def list(self, request, *args, **kwargs):
+        """Override list to recalculate totals for all sales."""
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Recalculate totals for all sales in the queryset
+        for sale in queryset:
+            sale.calculate_totals()
+            sale.save()
+        
+        # Return serialized data
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
     
     def _reduce_stock(self, sale):
         """Reduce product stock for all items in the sale using database transaction."""
@@ -349,7 +385,9 @@ class CreditSaleViewSet(viewsets.ModelViewSet):
         sale.calculate_totals()
         sale.save()
         
-        return Response(CreditSaleItemSerializer(item).data, status=201)
+        # Return the updated sale with recalculated totals
+        sale_serializer = CreditSaleSerializer(sale)
+        return Response(sale_serializer.data, status=201)
     
     @action(detail=True, methods=["post"])
     def record_payment(self, request, pk=None):

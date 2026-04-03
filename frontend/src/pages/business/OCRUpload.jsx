@@ -25,6 +25,7 @@ export default function OCRUpload() {
   const [creatingCreditSale, setCreatingCreditSale] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [renderError, setRenderError] = useState("");
 
   // Handle image selection
   const handleImageSelect = (e) => {
@@ -51,6 +52,7 @@ export default function OCRUpload() {
 
     setError("");
     setSuccessMessage("");
+    setRenderError("");
     setUploading(true);
 
     try {
@@ -61,23 +63,54 @@ export default function OCRUpload() {
       console.log("OCR Response:", response);
 
       if (response.status === "success" && response.parsed_data) {
+        // Validate that we extracted meaningful data
+        const parsedData = response.parsed_data || {};
+        const hasCustomerName = parsedData.customer_name && parsedData.customer_name.trim().length > 0;
+        const hasItems = Array.isArray(parsedData.items) && parsedData.items.length > 0;
+        const hasTotal = parsedData.total_amount && Number(parsedData.total_amount) > 0;
+
+        // If confidence is low and no meaningful data was extracted, allow manual entry
+        if (parsedData.confidence === "low" && !hasCustomerName && !hasItems) {
+          // Still proceed but show warning
+          setSuccessMessage("⚠️ Low confidence extraction. Please review and fill in missing details manually.");
+        } else {
+          const confidenceColor = {
+            high: "✅",
+            medium: "⚠️",
+            low: "❌",
+          }[parsedData.confidence] || "⚠️";
+          setSuccessMessage(`${confidenceColor} OCR processing complete! Review and edit the data below.`);
+        }
+
         setOcrResult(response);
 
-        // Initialize form with parsed data
-        setFormData({
-          customer_name: response.parsed_data.customer_name || "",
-          items: response.parsed_data.items || [],
-          total_amount: response.parsed_data.total_amount || 0,
-          note: "",
-        });
+        // Initialize form with parsed data, ensuring all item properties exist with proper types
+        const normalizedItems = Array.isArray(parsedData.items)
+          ? parsedData.items.map((item) => {
+              const qty = parseInt(item.quantity) || 1;
+              const price = parseFloat(item.unit_price) || 0;
+              return {
+                name: String(item.name || "").trim(),
+                quantity: qty,
+                unit_price: price,
+                subtotal: qty * price,
+              };
+            })
+          : [];
 
-        setSuccessMessage("OCR processing complete! Review the data below.");
+        setFormData({
+          customer_name: String(parsedData.customer_name || "").trim(),
+          items: normalizedItems,
+          total_amount: parseFloat(parsedData.total_amount) || 0,
+          note: parsedData.warning ? `Note: ${parsedData.warning}` : "",
+        });
       } else {
-        setError(response.message || "OCR processing failed");
+        setError(response.message || "OCR processing failed. Please try again.");
       }
     } catch (err) {
       console.error("OCR Error:", err);
-      setError(err.message || "Failed to process image");
+      const errorMsg = err.message || err.detail || "Failed to process image. Please try again.";
+      setError(errorMsg);
     } finally {
       setUploading(false);
     }
@@ -131,6 +164,7 @@ export default function OCRUpload() {
 
   // Create credit sale from confirmed OCR data
   const handleCreateCreditSale = async () => {
+    // Validate inputs
     if (!formData.customer_name.trim()) {
       setError("Customer name is required");
       return;
@@ -141,103 +175,157 @@ export default function OCRUpload() {
       return;
     }
 
+    const validItems = formData.items.filter(
+      (item) => item.name.trim() && item.quantity > 0 && item.unit_price > 0
+    );
+    if (validItems.length === 0) {
+      setError("At least one valid item is required (must have name, quantity > 0, and price > 0)");
+      return;
+    }
+
     if (formData.total_amount <= 0) {
       setError("Total amount must be greater than 0");
       return;
     }
 
     setError("");
+    setSuccessMessage("");
     setCreatingCreditSale(true);
 
     try {
       // Step 1: Get or create customer
-      console.log("Getting/creating customer...");
+      console.log("Step 1: Getting/creating customer...");
       let customerId;
-      
+
       try {
-        // Try to find existing customer by name
         const customersRes = await getCustomers();
-        const existingCustomer = customersRes.data.results?.find(
-          (c) => c.name.toLowerCase() === formData.customer_name.toLowerCase()
-        ) || customersRes.data.find(
-          (c) => c.name.toLowerCase() === formData.customer_name.toLowerCase()
+        const customersList = Array.isArray(customersRes.data)
+          ? customersRes.data
+          : customersRes.data?.results || [];
+
+        const existingCustomer = customersList.find(
+          (c) => c.name && c.name.toLowerCase() === formData.customer_name.toLowerCase()
         );
-        
+
         if (existingCustomer) {
           customerId = existingCustomer.id;
-          console.log("Found existing customer:", customerId);
+          console.log("✓ Found existing customer:", customerId);
         } else {
-          // Create new customer
-          const customerRes = await createCustomer({ name: formData.customer_name });
+          const customerRes = await createCustomer({
+            name: formData.customer_name,
+          });
           customerId = customerRes.data.id;
-          console.log("Created new customer:", customerId);
+          console.log("✓ Created new customer:", customerId);
         }
       } catch (err) {
-        throw new Error(`Failed to get/create customer: ${err.message}`);
+        console.error("Customer creation error:", err);
+        throw new Error(
+          err.response?.data?.detail ||
+            err.message ||
+            "Failed to get/create customer"
+        );
       }
 
-      // Step 2: Create credit sale with customer ID
-      console.log("Creating credit sale...");
-      const creditSaleData = {
-        customer: customerId,
-        notes: formData.note || "",
-      };
+      // Step 2: Create credit sale
+      console.log("Step 2: Creating credit sale...");
+      let creditSaleId;
+      try {
+        const creditSaleData = {
+          customer: customerId,
+          notes: formData.note || "",
+        };
 
-      const saleResponse = await createCreditSale(creditSaleData);
-      const creditSaleId = saleResponse.data.id;
-      console.log("Credit Sale Created:", creditSaleId);
+        const saleResponse = await createCreditSale(creditSaleData);
+        creditSaleId = saleResponse.data.id;
+        console.log("✓ Credit Sale created:", creditSaleId);
+      } catch (err) {
+        console.error("Credit sale creation error:", err);
+        throw new Error(
+          err.response?.data?.detail ||
+            err.message ||
+            "Failed to create credit sale"
+        );
+      }
 
-      // Step 3: Get or create products and add items to the credit sale
-      console.log("Adding items to credit sale...");
-      const productsRes = await getProducts();
-      const existingProducts = productsRes.data.results || productsRes.data || [];
-      
-      for (const item of formData.items) {
-        if (item.name && item.quantity > 0 && item.unit_price > 0) {
+      // Step 3: Get existing products and add items
+      console.log("Step 3: Adding items to credit sale...");
+      let addedItemCount = 0;
+      let failedItems = [];
+
+      try {
+        const productsRes = await getProducts();
+        const existingProducts = Array.isArray(productsRes.data)
+          ? productsRes.data
+          : productsRes.data?.results || [];
+
+        for (const item of validItems) {
           try {
             // Find or create product
             let productId;
             const existingProduct = existingProducts.find(
-              (p) => p.name.toLowerCase() === item.name.toLowerCase()
+              (p) => p.name && p.name.toLowerCase() === item.name.toLowerCase()
             );
-            
+
             if (existingProduct) {
               productId = existingProduct.id;
-              console.log("Using existing product:", item.name, productId);
             } else {
-              // Create new product
               const productRes = await createProduct({
                 name: item.name,
                 selling_price: item.unit_price,
                 category: "OCR Import",
-                stock_quantity: 0, // OCR items don't affect inventory
+                stock_quantity: 0,
               });
               productId = productRes.data.id;
-              console.log("Created new product:", item.name, productId);
+              existingProducts.push(productRes.data);
             }
 
-            // Add item to credit sale using product ID
-            const itemData = {
+            // Add item to credit sale
+            await addItemToCreditSale(creditSaleId, {
               product: productId,
               quantity: item.quantity,
               unit_price: item.unit_price,
-            };
-            await addItemToCreditSale(creditSaleId, itemData);
-            console.log("Added item:", item.name);
+            });
+
+            addedItemCount++;
+            console.log(`✓ Added item: ${item.name}`);
           } catch (itemErr) {
-            console.error("Failed to add item:", item.name, itemErr);
-            // Continue adding other items even if one fails
+            console.error(`✗ Failed to add item "${item.name}":`, itemErr);
+            failedItems.push(item.name);
           }
         }
+
+        if (addedItemCount === 0) {
+          throw new Error("Failed to add any items to the credit sale");
+        }
+
+        if (failedItems.length > 0) {
+          console.warn(
+            `Warning: Failed to add ${failedItems.length} items: ${failedItems.join(", ")}`
+          );
+        }
+      } catch (err) {
+        console.error("Item addition error:", err);
+        throw new Error(
+          failedItems.length > 0
+            ? `Added ${addedItemCount} items but failed for: ${failedItems.join(", ")}`
+            : err.message || "Failed to add items to credit sale"
+        );
       }
 
-      setSuccessMessage("Credit sale created successfully!");
+      // Success
+      console.log(`✓ Credit sale created successfully with ${addedItemCount} items`);
+      setSuccessMessage(
+        failedItems.length > 0
+          ? `✓ Credit sale created with ${addedItemCount} items (${failedItems.length} failed)`
+          : "✓ Credit sale created successfully!"
+      );
+
       setTimeout(() => {
         navigate("/business/credit-sales");
       }, 1500);
     } catch (err) {
       console.error("Error creating credit sale:", err);
-      setError(err.response?.data?.detail || err.message || "Failed to create credit sale");
+      setError(err.message || "Failed to create credit sale. Please try again.");
     } finally {
       setCreatingCreditSale(false);
     }
@@ -317,7 +405,36 @@ export default function OCRUpload() {
   }
 
   // Stage 2: Review & Confirm
-  return (
+  if (ocrResult) {
+    // Safety check to ensure we have valid data
+    if (!ocrResult.parsed_data) {
+      return (
+        <div className="ocr-upload-container">
+          <div className="ocr-card">
+            <div className="ocr-header">
+              <h1>❌ Error Processing Image</h1>
+              <p>The system could not process the image data properly.</p>
+            </div>
+            <div className="alert alert-error">
+              {error || "An unexpected error occurred while processing the OCR data."}
+            </div>
+            <button
+              onClick={() => {
+                setOcrResult(null);
+                setFormData({ customer_name: "", items: [], total_amount: 0, note: "" });
+                setError("");
+              }}
+              className="btn-secondary"
+              style={{ marginTop: 20 }}
+            >
+              ← Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
     <div className="ocr-upload-container">
       <div className="ocr-card">
         <div className="ocr-header">
@@ -327,19 +444,21 @@ export default function OCRUpload() {
           </p>
 
           <div className="ocr-status">
-            <span className={`confidence-badge ${ocrResult.confidence}`}>
-              Confidence: {(ocrResult.confidence || "medium").toUpperCase()}
+            <span className={`confidence-badge ${ocrResult.parsed_data?.confidence || "medium"}`}>
+              Confidence: {(ocrResult.parsed_data?.confidence || "medium").toUpperCase()}
             </span>
           </div>
         </div>
 
         {/* Show raw text for reference */}
-        <details className="raw-text-section">
-          <summary>📝 Show Raw Text</summary>
-          <div className="raw-text-content">
-            <pre>{ocrResult.raw_text}</pre>
-          </div>
-        </details>
+        {ocrResult.raw_text && (
+          <details className="raw-text-section">
+            <summary>📝 Show Raw Text</summary>
+            <div className="raw-text-content">
+              <pre>{ocrResult.raw_text}</pre>
+            </div>
+          </details>
+        )}
 
         {/* Editable Form */}
         <div className="ocr-form">
@@ -381,7 +500,7 @@ export default function OCRUpload() {
                     className="item-input item-price"
                   />
                   <div className="item-subtotal">
-                    ₹ {item.subtotal.toFixed(2)}
+                    ₹ {(item.subtotal || 0).toFixed(2)}
                   </div>
                   <button
                     onClick={() => handleRemoveItem(index)}
@@ -453,5 +572,6 @@ export default function OCRUpload() {
         </div>
       </div>
     </div>
-  );
+    );
+  }
 }

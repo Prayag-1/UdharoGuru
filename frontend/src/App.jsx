@@ -5,8 +5,8 @@ import { AuthProvider } from "./context/AuthContext";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 import VerifyEmail from "./pages/auth/VerifyEmail";
+import BusinessLayout from "./pages/business/BusinessLayout";
 import BusinessDashboard from "./pages/business/BusinessDashboard";
-import BusinessLedger from "./pages/business/BusinessLedger";
 import Payment from "./pages/business/Payment";
 import KycForm from "./pages/business/KycForm";
 import BusinessProfileSetup from "./pages/business/BusinessProfileSetup";
@@ -40,24 +40,26 @@ function App() {
           <Route path="/auth/signup" element={<Signup />} />
           <Route path="/auth/verify-email" element={<VerifyEmail />} />
 
-          <Route path="/business/dashboard" element={<BusinessDashboard />} />
-          <Route path="/business/ledger" element={<BusinessLedger />} />
-          <Route path="/business/payment" element={<Payment />} />
-          <Route path="/business/profile" element={<BusinessProfileSetup />} />
-          <Route path="/business/customers" element={<CustomersPage />} />
-          <Route path="/business/customers/:id" element={<CustomerProfile />} />
-          <Route path="/business/products" element={<ProductsPage />} />
-          <Route path="/business/credit-sales" element={<CreditSalesPage />} />
-          <Route path="/business/credit-sales/create" element={<CreateCreditSale />} />
-          <Route path="/business/credit-sales/:id" element={<CreditSaleDetail />} />
-          <Route path="/business/ocr/upload" element={<OCRUpload />} />
-          <Route path="/business/payments" element={<PaymentsPage />} />
-          <Route path="/business/kyc" element={<KycForm />} />
-          <Route path="/business/kyc/review" element={<KycForm />} />
-          <Route path="/business/pending" element={<PendingVerification />} />
-          <Route path="/business/rejected" element={<Rejected />} />
-          <Route path="/business/ocr" element={<OcrList />} />
-          <Route path="/business/ocr/:id" element={<OcrDetail />} />
+          <Route path="/business/*" element={<BusinessLayout />}>
+            <Route path="dashboard" element={<BusinessDashboard />} />
+            <Route path="payment" element={<Payment />} />
+            <Route path="profile" element={<BusinessProfileSetup />} />
+            <Route path="customers" element={<CustomersPage />} />
+            <Route path="customers/:id" element={<CustomerProfile />} />
+            <Route path="products" element={<ProductsPage />} />
+            <Route path="credit-sales" element={<CreditSalesPage />} />
+            <Route path="credit-sales/create" element={<CreateCreditSale />} />
+            <Route path="credit-sales/:id" element={<CreditSaleDetail />} />
+            <Route path="ocr/upload" element={<OCRUpload />} />
+            <Route path="payments" element={<PaymentsPage />} />
+            <Route path="kyc" element={<KycForm />} />
+            <Route path="kyc/review" element={<KycForm />} />
+            <Route path="pending" element={<PendingVerification />} />
+            <Route path="rejected" element={<Rejected />} />
+            <Route path="ocr" element={<OcrList />} />
+            <Route path="ocr/:id" element={<OcrDetail />} />
+            <Route path="*" element={<Navigate to="/business/dashboard" replace />} />
+          </Route>
 
           <Route path="/private" element={<Navigate to="/private/dashboard" replace />} />
           <Route path="/private/*" element={<PrivateLayout />}>

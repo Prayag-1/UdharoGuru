@@ -95,18 +95,49 @@ export default function OcrDetail() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.amount || !form.date || submitting) return;
+    
+    // Validate required fields
+    if (!form.merchant?.trim()) {
+      setError("Merchant name is required");
+      return;
+    }
+    if (!form.amount) {
+      setError("Amount is required");
+      return;
+    }
+    if (!form.date) {
+      setError("Transaction date is required");
+      return;
+    }
+    
+    if (submitting) return;
     setSubmitting(true);
     setError("");
+    
     try {
-      await confirmBusinessOcr(id, form);
-      navigate("/business/ocr", { state: { success: "OCR confirmed and transaction created." }, replace: true });
+      const payload = {
+        amount: form.amount,
+        date: form.date,
+        merchant: form.merchant,
+        note: form.note || "",
+        transaction_type: form.transaction_type,
+      };
+      
+      console.log("Submitting OCR confirmation:", payload);
+      await confirmBusinessOcr(id, payload);
+      
+      navigate("/business/ocr", {
+        state: { success: "✓ OCR confirmed and transaction created successfully." },
+        replace: true,
+      });
     } catch (err) {
+      console.error("OCR confirmation error:", err);
       const msg =
         err?.response?.data?.detail ||
         err?.response?.data?.message ||
         err?.response?.data?.non_field_errors?.[0] ||
-        "Unable to confirm. Please review the fields.";
+        err?.message ||
+        "Unable to confirm. Please review the fields and try again.";
       setError(msg);
     } finally {
       setSubmitting(false);

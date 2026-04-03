@@ -164,17 +164,34 @@ export default function GroupsView() {
 
   useEffect(() => {
     if (!chatThread?.id) return;
+    let cancelled = false;
+    let polling = false;
     const run = async () => {
+      if (polling || document.visibilityState !== "visible") return;
+      polling = true;
       try {
         const { data } = await getThreadMessages(chatThread.id);
-        setChatMessages(data);
+        if (!cancelled) {
+          setChatMessages(data);
+        }
       } catch (err) {
         console.error("Failed to poll group chat", err);
+      } finally {
+        polling = false;
       }
     };
+
     run();
-    pollRef.current = setInterval(run, 8000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        run();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    pollRef.current = setInterval(run, 15000);
     return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [chatThread?.id]);

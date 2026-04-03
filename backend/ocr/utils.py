@@ -110,29 +110,31 @@ def parse_ocr_text_to_credit_sale(text):
     {
         "customer_name": "...",
         "items": [
-            {"name": "...", "quantity": 1, "unit_price": 0, "subtotal": 0}
+            {"name": "...", "quantity": 1, "unit_price": 0.00, "subtotal": 0.00}
         ],
-        "total_amount": 0,
-        "confidence": "high|medium|low"
+        "total_amount": 0.00,
+        "confidence": "high|medium|low",
+        "warning": "optional warning message"
     }
     """
     if not text or not text.strip():
         return {
             "customer_name": "",
             "items": [],
-            "total_amount": 0,
+            "total_amount": 0.00,
             "confidence": "low",
             "warning": "Empty or invalid text"
         }
     
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     
-    # Initialize result
+    # Initialize result with proper defaults
     result = {
         "customer_name": "",
         "items": [],
-        "total_amount": 0,
-        "confidence": "medium"
+        "total_amount": 0.00,
+        "confidence": "medium",
+        "warning": None
     }
     
     # Extract customer name (usually first meaningful line)
@@ -147,18 +149,29 @@ def parse_ocr_text_to_credit_sale(text):
     
     # Parse items from lines
     items = parse_items_from_lines(lines)
-    result["items"] = items
+    result["items"] = items if items else []
     
-    # Validate parsing
+    # Ensure all items have complete structure with proper float types
+    for item in result["items"]:
+        item["quantity"] = int(item.get("quantity", 1))
+        item["unit_price"] = float(item.get("unit_price", 0.0))
+        item["subtotal"] = float(item.get("subtotal", 0.0))
+    
+    # Validate parsing and set confidence
     if not result["customer_name"]:
         result["confidence"] = "low"
         result["warning"] = "Customer name not detected"
-    elif not items:
-        result["confidence"] = "low"
-        result["warning"] = "No items detected in text"
-    elif not total_amount:
+    elif not result["items"]:
         result["confidence"] = "medium"
-        result["warning"] = "Total amount not clearly detected"
+        result["warning"] = "No items detected in text. You can add them manually."
+    elif not result["total_amount"] or result["total_amount"] == 0:
+        result["confidence"] = "medium"
+        result["warning"] = "Total amount not clearly detected. Please verify."
+    else:
+        # Check if extracted data seems reasonable
+        if result["customer_name"] and result["items"] and result["total_amount"] > 0:
+            result["confidence"] = "high"
+            result["warning"] = None
     
     return result
 

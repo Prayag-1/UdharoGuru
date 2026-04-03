@@ -148,7 +148,7 @@ export default function CreditSaleDetail() {
   }
 
   const statusColor = getStatusColor(sale.status);
-  const paymentProgress = (sale.amount_paid / sale.total_amount) * 100;
+  const paymentProgress = sale.total_amount > 0 ? (sale.amount_paid / sale.total_amount) * 100 : 0;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>
