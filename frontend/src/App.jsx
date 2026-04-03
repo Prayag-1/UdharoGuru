@@ -4,6 +4,7 @@ import "./App.css";
 import { AuthProvider } from "./context/AuthContext";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
+import VerifyOtp from "./pages/auth/VerifyOtp";
 import VerifyEmail from "./pages/auth/VerifyEmail";
 import BusinessLayout from "./pages/business/BusinessLayout";
 import BusinessDashboard from "./pages/business/BusinessDashboard";
@@ -37,6 +38,7 @@ function App() {
           <Route path="/" element={<Navigate to="/auth/login" replace />} />
 
           <Route path="/auth/login" element={<Login />} />
+          <Route path="/auth/verify-otp" element={<VerifyOtp />} />
           <Route path="/auth/signup" element={<Signup />} />
           <Route path="/auth/verify-email" element={<VerifyEmail />} />
 

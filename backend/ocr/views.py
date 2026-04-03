@@ -9,14 +9,14 @@ import os
 
 from accounts.permissions import IsBusinessAccount
 from accounts.models import BusinessProfile
-from core.models import Customer
 
 from .models import BusinessTransaction, OCRDocument, OCRScan
 from .serializers import OCRConfirmSerializer, OCRDocumentSerializer
-from .utils import extract_amount, extract_date, extract_merchant, run_ocr, parse_ocr_text_to_credit_sale
+from .utils import extract_amount, extract_date, extract_merchant, parse_ocr_text_to_credit_sale, run_ocr
 
 
 def serialize_document(document: OCRDocument):
+    transaction = getattr(document, "business_transaction", None) if hasattr(document, "business_transaction") else None
     serializer = OCRDocumentSerializer(
         {
             "id": document.id,
@@ -27,9 +27,9 @@ def serialize_document(document: OCRDocument):
             "status": document.status,
             "created_at": document.created_at,
             "image": document.image.url if document.image else None,
-            "business_transaction_id": getattr(document.business_transaction, "id", None)
-            if hasattr(document, "business_transaction")
-            else None,
+            "business_transaction_id": getattr(transaction, "id", None),
+            "transaction_type": getattr(transaction, "transaction_type", None),
+            "transaction_note": getattr(transaction, "note", None),
         }
     )
     return serializer.data
@@ -55,17 +55,28 @@ class OCRScanView(APIView):
         scan = OCRScan.objects.create(user=request.user, image=image)
 
         text = run_ocr(scan.image.path)
-        amount = extract_amount(text)
+        parsed = parse_ocr_text_to_credit_sale(text)
+        amount = parsed.get("total_amount") or 0
 
         scan.extracted_text = text
-        scan.detected_amount = amount
+        scan.detected_amount = amount or None
         scan.save()
 
         return Response(
             {
+                "success": True,
                 "scan_id": scan.id,
-                "extracted_text": text,
+                "raw_text": text,
                 "detected_amount": amount,
+                "total_amount": parsed.get("total_amount"),
+                "subtotal": parsed.get("subtotal"),
+                "tax": parsed.get("tax"),
+                "items": parsed.get("items", []),
+                "vendor": parsed.get("vendor"),
+                "date": parsed.get("date"),
+                "bill_type": parsed.get("bill_type"),
+                "confidence": parsed.get("confidence"),
+                "manual_review_required": parsed.get("manual_review_required", True),
             }
         )
 
@@ -84,10 +95,11 @@ class BusinessOCRUploadView(APIView):
         document = OCRDocument.objects.create(owner=request.user, image=image, status=OCRDocument.DRAFT)
 
         raw_text = run_ocr(document.image.path) or ""
+        parsed = parse_ocr_text_to_credit_sale(raw_text)
         document.raw_text = raw_text
-        document.extracted_amount = extract_amount(raw_text)
+        document.extracted_amount = parsed.get("total_amount") or extract_amount(raw_text)
         document.extracted_date = extract_date(raw_text)
-        document.extracted_merchant = extract_merchant(raw_text)
+        document.extracted_merchant = parsed.get("vendor") or extract_merchant(raw_text)
         document.save(
             update_fields=["raw_text", "extracted_amount", "extracted_date", "extracted_merchant", "status"]
         )
@@ -125,6 +137,83 @@ class BusinessOCRDetailView(APIView):
         document = get_object_or_404(OCRDocument, pk=pk, owner=request.user)
         return Response(serialize_document(document), status=200)
 
+    def patch(self, request, pk):
+        if getattr(request.user, "account_type", "").upper() != "BUSINESS":
+            return Response({"detail": "Business account required."}, status=403)
+
+        document = get_object_or_404(OCRDocument, pk=pk, owner=request.user)
+        serializer = OCRConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        incoming_type = (data.get("transaction_type") or "").upper()
+        normalized_type = "CREDIT" if incoming_type in ("CREDIT", "LENT") else "DEBIT"
+
+        document.extracted_amount = data["amount"]
+        document.extracted_date = data["date"]
+        document.extracted_merchant = data["merchant"]
+
+        transaction = getattr(document, "business_transaction", None) if hasattr(document, "business_transaction") else None
+
+        if transaction is None:
+            document.status = OCRDocument.CONFIRMED
+            document.save(update_fields=["extracted_amount", "extracted_date", "extracted_merchant", "status"])
+            transaction = BusinessTransaction.objects.create(
+                owner=request.user,
+                ocr_document=document,
+                merchant=data["merchant"],
+                customer_name=data["merchant"],
+                amount=data["amount"],
+                transaction_type=normalized_type,
+                transaction_date=data["date"],
+                note=data.get("note") or "",
+                source="OCR",
+            )
+        else:
+            document.save(update_fields=["extracted_amount", "extracted_date", "extracted_merchant"])
+            transaction.merchant = data["merchant"]
+            transaction.customer_name = data["merchant"]
+            transaction.amount = data["amount"]
+            transaction.transaction_type = normalized_type
+            transaction.transaction_date = data["date"]
+            transaction.note = data.get("note") or ""
+            transaction.save(
+                update_fields=[
+                    "merchant",
+                    "customer_name",
+                    "amount",
+                    "transaction_type",
+                    "transaction_date",
+                    "note",
+                ]
+            )
+
+        response_data = serialize_document(document)
+        response_data["transaction_id"] = transaction.id
+        return Response(response_data, status=200)
+
+    def delete(self, request, pk):
+        if getattr(request.user, "account_type", "").upper() != "BUSINESS":
+            return Response({"detail": "Business account required."}, status=403)
+
+        document = get_object_or_404(OCRDocument, pk=pk, owner=request.user)
+        transaction = getattr(document, "business_transaction", None) if hasattr(document, "business_transaction") else None
+        transaction_id = getattr(transaction, "id", None)
+
+        if transaction is not None:
+            transaction.delete()
+
+        document.delete()
+
+        return Response(
+            {
+                "success": True,
+                "deleted_document_id": pk,
+                "deleted_transaction_id": transaction_id,
+            },
+            status=200,
+        )
+
 
 class BusinessOCRConfirmView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessAccount]
@@ -153,10 +242,12 @@ class BusinessOCRConfirmView(APIView):
             owner=request.user,
             ocr_document=document,
             merchant=data["merchant"],
+            customer_name=data["merchant"],
             amount=data["amount"],
             transaction_type=normalized_type,
             transaction_date=data["date"],
             note=data.get("note") or "",
+            source="OCR",
         )
 
         response_data = serialize_document(document)
@@ -208,7 +299,6 @@ class CreditSaleOCRProcessView(APIView):
 
         temp_path = None
         try:
-            # LAYER 1 — Text Extraction
             # Save uploaded image to temporary file since run_ocr expects a file path
             with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
                 for chunk in image.chunks():
@@ -222,61 +312,78 @@ class CreditSaleOCRProcessView(APIView):
             except Exception as e:
                 return Response(
                     {
+                        "success": False,
                         "status": "error",
                         "message": f"Failed to extract text from image: {str(e)}",
                         "raw_text": "",
                         "parsed_data": None,
-                        "confidence": "low"
-                    },
-                    status=400
-                )
-            
-            if not raw_text or not raw_text.strip():
-                return Response(
-                    {
-                        "status": "error",
-                        "message": "Could not extract text from image. Please try a clearer, well-lit image of the bill.",
-                        "raw_text": "",
-                        "parsed_data": None,
-                        "confidence": "low"
+                        "total_amount": None,
+                        "subtotal": None,
+                        "tax": None,
+                        "items": [],
+                        "vendor": None,
+                        "date": None,
+                        "confidence": "low",
+                        "manual_review_required": True,
                     },
                     status=400
                 )
 
-            # LAYER 2 — Data Parsing
             try:
                 parsed_data = parse_ocr_text_to_credit_sale(raw_text)
             except Exception as e:
                 return Response(
                     {
+                        "success": False,
                         "status": "error",
                         "message": f"Failed to parse OCR data: {str(e)}",
                         "raw_text": raw_text,
                         "parsed_data": None,
-                        "confidence": "low"
+                        "total_amount": None,
+                        "subtotal": None,
+                        "tax": None,
+                        "items": [],
+                        "vendor": None,
+                        "date": None,
+                        "confidence": "low",
+                        "manual_review_required": True,
                     },
                     status=500
                 )
 
-            # Ensure parsed_data has all required fields with proper types
             if not parsed_data:
                 parsed_data = {
                     "customer_name": "",
+                    "vendor": None,
                     "items": [],
                     "total_amount": 0.0,
+                    "subtotal": None,
+                    "tax": None,
+                    "date": None,
+                    "bill_type": "unknown",
+                    "payment_details": {},
                     "confidence": "low",
-                    "warning": "Failed to parse data"
+                    "warning": "Failed to parse data",
+                    "manual_review_required": True,
                 }
 
-            # LAYER 3 — Return for User Confirmation
             return Response(
                 {
+                    "success": True,
                     "status": "success",
-                    "message": "OCR processing complete. Please review and confirm the extracted data.",
+                    "message": "OCR processing complete. Review the extracted values and correct anything uncertain.",
                     "raw_text": raw_text,
+                    "total_amount": parsed_data.get("total_amount"),
+                    "subtotal": parsed_data.get("subtotal"),
+                    "tax": parsed_data.get("tax"),
+                    "items": parsed_data.get("items", []),
+                    "vendor": parsed_data.get("vendor"),
+                    "date": parsed_data.get("date"),
                     "parsed_data": parsed_data,
                     "confidence": parsed_data.get("confidence", "medium"),
-                    "next_step": "Review the extracted data, make any necessary edits, and submit the form to create a credit sale."
+                    "bill_type": parsed_data.get("bill_type", "unknown"),
+                    "manual_review_required": parsed_data.get("manual_review_required", True),
+                    "next_step": "Review the extracted data, make any necessary edits, and submit the form to create a credit sale.",
                 },
                 status=200
             )
@@ -284,10 +391,18 @@ class CreditSaleOCRProcessView(APIView):
         except Exception as e:
             return Response(
                 {
+                    "success": False,
                     "status": "error",
                     "message": f"Unexpected error: {str(e)}",
                     "parsed_data": None,
-                    "confidence": "low"
+                    "total_amount": None,
+                    "subtotal": None,
+                    "tax": None,
+                    "items": [],
+                    "vendor": None,
+                    "date": None,
+                    "confidence": "low",
+                    "manual_review_required": True,
                 },
                 status=500
             )
@@ -298,5 +413,3 @@ class CreditSaleOCRProcessView(APIView):
                     os.unlink(temp_path)
                 except Exception as e:
                     print(f"Warning: Failed to clean up temp file: {e}")
-
-

@@ -6,7 +6,7 @@ import "./BusinessLayout.css";
 
 export default function BusinessLayout() {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { loading, business_status } = useBusinessGate(location.pathname);
   const isApproved = business_status === "APPROVED";
 
@@ -26,20 +26,41 @@ export default function BusinessLayout() {
     window.location.replace("/auth/login");
   };
 
-  // if (loading) {
-  //   return (
-  //     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-  //       <div>Loading...</div>
-  //     </div>
-  //   );
-  // }
+  // Don't unmount Outlet—show overlay instead to prevent component remounting
+  if (!user && authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div>Loading...</div>
+      </div>
+    );
+  }
 
-  // if (!user) {
-  //   return null;
-  // }
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="business-layout">
+      {/* Loading overlay while business gate is checking */}
+      {loading && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(255,255,255,0.8)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div>Loading...</div>
+        </div>
+      )}
+
       <aside className="business-sidebar">
         <div className="sidebar-header">
           <h1 className="sidebar-title">Udharo</h1>
@@ -64,7 +85,7 @@ export default function BusinessLayout() {
 
         <div className="sidebar-footer">
           <div className="user-info">
-            <div className="user-name">{user.full_name || user.email}</div>
+            <div className="user-name">{user?.full_name || user?.email || "User"}</div>
             <div className="user-type">Business Account</div>
           </div>
           <button className="logout-btn" onClick={handleLogout}>

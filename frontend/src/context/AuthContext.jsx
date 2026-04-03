@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
 
 import { clearTokens, setTokens } from "../api/apiClient";
-import { getMe, login as loginApi, register as registerApi } from "../api/auth";
+import { getMe, login as loginApi, register as registerApi, verifyOtp as verifyOtpApi } from "../api/auth";
 
 const AuthContext = createContext(null);
 
@@ -30,6 +30,7 @@ export const resolveHomeRoute = (user) => {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const initCompleteRef = useRef(false);
 
   const loadUser = useCallback(async () => {
     try {
@@ -43,17 +44,26 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // Initial load: run once on mount with tokens
   useEffect(() => {
     const hasTokens =
       localStorage.getItem(ACCESS_KEY) && localStorage.getItem(REFRESH_KEY);
     if (!hasTokens) {
       setLoading(false);
+      initCompleteRef.current = true;
       return;
     }
 
-    loadUser().finally(() => setLoading(false));
-  }, [loadUser]);
+    // Only run initialization once
+    if (initCompleteRef.current) {
+      return;
+    }
+    initCompleteRef.current = true;
 
+    loadUser().finally(() => setLoading(false));
+  }, []);  // Empty dependencies - run only once on mount
+
+  // Clear auth event listener
   useEffect(() => {
     const handleClear = () => setUser(null);
     window.addEventListener("auth:cleared", handleClear);
@@ -93,11 +103,23 @@ export function AuthProvider({ children }) {
     async ({ email, password }) => {
       try {
         const { data } = await loginApi({ email, password });
+        return data;
+      } catch (err) {
+        throw buildError(err, "Unable to login.");
+      }
+    },
+    []
+  );
+
+  const verifyOtp = useCallback(
+    async ({ user_id, otp }) => {
+      try {
+        const { data } = await verifyOtpApi({ user_id, otp });
         setTokens(data.access, data.refresh);
         const profile = await loadUser();
         return profile;
       } catch (err) {
-        throw buildError(err, "Unable to login.");
+        throw buildError(err, "Unable to verify OTP.");
       }
     },
     [loadUser]
@@ -128,6 +150,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     removeTokens();
     setUser(null);
+    initCompleteRef.current = false; // Reset for next login
   }, []);
 
   const setUserState = useCallback((updater) => {
@@ -139,6 +162,7 @@ export function AuthProvider({ children }) {
       user,
       loading,
       login,
+      verifyOtp,
       register,
       logout,
       refreshUser: loadUser,
@@ -148,6 +172,7 @@ export function AuthProvider({ children }) {
       user,
       loading,
       login,
+      verifyOtp,
       register,
       logout,
       loadUser,

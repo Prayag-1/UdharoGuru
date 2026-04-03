@@ -193,3 +193,22 @@ class BusinessProfile(models.Model):
 
     def __str__(self):
         return f"{self.business_name} ({self.user.email})"
+
+
+class LoginOTP(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="login_otps")
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+        ]
+
+    def is_expired(self):
+        expiry_minutes = getattr(settings, "OTP_EXPIRY_MINUTES", 5)
+        return timezone.now() > self.created_at + timezone.timedelta(minutes=expiry_minutes)
+
+    def __str__(self):
+        return f"OTP for {self.user.email}"

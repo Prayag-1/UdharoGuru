@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { confirmBusinessOcr, getBusinessOcr } from "../../api/business";
+import { confirmBusinessOcr, deleteBusinessOcr, getBusinessOcr, updateBusinessOcr } from "../../api/business";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessGate } from "../../hooks/useBusinessGate";
 
@@ -43,6 +43,7 @@ export default function OcrDetail() {
     transaction_type: "LENT",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [rawOpen, setRawOpen] = useState(false);
 
   const load = async () => {
@@ -55,8 +56,8 @@ export default function OcrDetail() {
         merchant: data.extracted_merchant || "",
         amount: data.extracted_amount ? String(data.extracted_amount) : "",
         date: data.extracted_date || "",
-        note: "",
-        transaction_type: "LENT",
+        note: data.transaction_note || "",
+        transaction_type: data.transaction_type === "DEBIT" ? "BORROWED" : "LENT",
       });
     } catch (err) {
       const msg = err?.response?.data?.detail || "Unable to load OCR document.";
@@ -81,6 +82,8 @@ export default function OcrDetail() {
     if (id) load();
   }, [gateLoading, id, user]);
 
+  const isConfirmed = document?.status === "CONFIRMED";
+
   const warnings = useMemo(() => {
     const notes = [];
     if (!form.merchant) notes.push("Merchant missing, please fill manually.");
@@ -95,8 +98,7 @@ export default function OcrDetail() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Validate required fields
+
     if (!form.merchant?.trim()) {
       setError("Merchant name is required");
       return;
@@ -109,11 +111,11 @@ export default function OcrDetail() {
       setError("Transaction date is required");
       return;
     }
-    
+
     if (submitting) return;
     setSubmitting(true);
     setError("");
-    
+
     try {
       const payload = {
         amount: form.amount,
@@ -122,29 +124,56 @@ export default function OcrDetail() {
         note: form.note || "",
         transaction_type: form.transaction_type,
       };
-      
-      console.log("Submitting OCR confirmation:", payload);
-      await confirmBusinessOcr(id, payload);
-      
+
+      if (isConfirmed) {
+        await updateBusinessOcr(id, payload);
+      } else {
+        await confirmBusinessOcr(id, payload);
+      }
+
       navigate("/business/ocr", {
-        state: { success: "✓ OCR confirmed and transaction created successfully." },
+        state: {
+          success: isConfirmed ? "OCR transaction updated successfully." : "OCR confirmed and transaction created successfully.",
+        },
         replace: true,
       });
     } catch (err) {
-      console.error("OCR confirmation error:", err);
       const msg =
         err?.response?.data?.detail ||
         err?.response?.data?.message ||
         err?.response?.data?.non_field_errors?.[0] ||
         err?.message ||
-        "Unable to confirm. Please review the fields and try again.";
+        "Unable to save. Please review the fields and try again.";
       setError(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const isConfirmed = document?.status === "CONFIRMED";
+  const handleDelete = async () => {
+    if (deleting || !document) return;
+
+    const confirmed = window.confirm(
+      isConfirmed ? "Delete this OCR record and its linked transaction?" : "Delete this OCR draft?"
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError("");
+    try {
+      await deleteBusinessOcr(id);
+      navigate("/business/ocr", {
+        state: {
+          success: isConfirmed ? "OCR record and linked transaction deleted." : "OCR draft deleted.",
+        },
+        replace: true,
+      });
+    } catch (err) {
+      const msg = err?.response?.data?.detail || "Unable to delete this OCR record.";
+      setError(msg);
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -154,7 +183,7 @@ export default function OcrDetail() {
     );
   }
 
-  if (error) {
+  if (error && !document) {
     return (
       <div style={{ padding: 28, maxWidth: 720 }}>
         <div style={{ marginBottom: 12 }}>
@@ -175,7 +204,7 @@ export default function OcrDetail() {
         <div>
           <div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a" }}>Review OCR</div>
           <div style={{ color: "#475569" }}>
-            {isConfirmed ? "This OCR is already confirmed and read-only." : "Confirm the extracted fields before creating the transaction."}
+            {isConfirmed ? "Edit or delete the linked OCR transaction here." : "Confirm the extracted fields before creating the transaction."}
           </div>
         </div>
         <Link to="/business/ocr" style={{ color: "#0f172a", fontWeight: 800 }}>
@@ -185,7 +214,7 @@ export default function OcrDetail() {
 
       {isConfirmed && (
         <div style={{ padding: 12, borderRadius: 12, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", fontWeight: 700 }}>
-          This document is confirmed. To make changes, re-upload the receipt or create a new OCR.
+          This document is confirmed. Changes here update the linked transaction directly.
         </div>
       )}
 
@@ -277,9 +306,8 @@ export default function OcrDetail() {
                 placeholder="Merchant name"
                 style={inputStyle}
                 required
-                disabled={isConfirmed}
               />
-              {!form.merchant && !isConfirmed && <span style={hint}>Not detected by OCR. Please fill manually.</span>}
+              {!form.merchant && <span style={hint}>Not detected by OCR. Please fill manually.</span>}
             </label>
           </div>
 
@@ -295,9 +323,8 @@ export default function OcrDetail() {
                 placeholder="0.00"
                 style={inputStyle}
                 required
-                disabled={isConfirmed}
               />
-              {!form.amount && !isConfirmed && <span style={hint}>Amount missing. Confirm before saving.</span>}
+              {!form.amount && <span style={hint}>Amount missing. Confirm before saving.</span>}
               {form.amount && <span style={{ ...hint, color: "#0f172a" }}>Parsed: {formatCurrency(form.amount)}</span>}
             </label>
             <label style={{ fontWeight: 800, color: "#0f172a" }}>
@@ -308,9 +335,8 @@ export default function OcrDetail() {
                 onChange={(e) => handleChange("date", e.target.value)}
                 style={inputStyle}
                 required
-                disabled={isConfirmed}
               />
-              {!form.date && !isConfirmed && <span style={hint}>Date missing. Set the transaction date.</span>}
+              {!form.date && <span style={hint}>Date missing. Set the transaction date.</span>}
             </label>
           </div>
 
@@ -320,7 +346,6 @@ export default function OcrDetail() {
               value={form.transaction_type}
               onChange={(e) => handleChange("transaction_type", e.target.value)}
               style={{ ...inputStyle, background: "#f8fafc" }}
-              disabled={isConfirmed}
             >
               <option value="LENT">Expense / Outflow</option>
               <option value="BORROWED">Income / Inflow</option>
@@ -334,7 +359,6 @@ export default function OcrDetail() {
               onChange={(e) => handleChange("note", e.target.value)}
               placeholder="Add context for this transaction"
               style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
-              disabled={isConfirmed}
             />
           </label>
 
@@ -344,25 +368,39 @@ export default function OcrDetail() {
             </div>
           )}
 
-          {!isConfirmed && (
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                type="submit"
-                disabled={submitting || !form.amount || !form.date}
-                style={{
-                  border: "none",
-                  background: submitting || !form.amount || !form.date ? "#94a3b8" : "#0f172a",
-                  color: "#ffffff",
-                  fontWeight: 800,
-                  padding: "12px 16px",
-                  borderRadius: 12,
-                  cursor: submitting || !form.amount || !form.date ? "not-allowed" : "pointer",
-                }}
-              >
-                {submitting ? "Confirming..." : "Confirm & Create Transaction"}
-              </button>
-            </div>
-          )}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{
+                border: "1px solid #fecaca",
+                background: deleting ? "#fca5a5" : "#fff1f2",
+                color: "#b91c1c",
+                fontWeight: 800,
+                padding: "12px 16px",
+                borderRadius: 12,
+                cursor: deleting ? "not-allowed" : "pointer",
+              }}
+            >
+              {deleting ? "Deleting..." : isConfirmed ? "Delete Transaction" : "Delete Draft"}
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !form.amount || !form.date}
+              style={{
+                border: "none",
+                background: submitting || !form.amount || !form.date ? "#94a3b8" : "#0f172a",
+                color: "#ffffff",
+                fontWeight: 800,
+                padding: "12px 16px",
+                borderRadius: 12,
+                cursor: submitting || !form.amount || !form.date ? "not-allowed" : "pointer",
+              }}
+            >
+              {submitting ? (isConfirmed ? "Saving..." : "Confirming...") : isConfirmed ? "Save Changes" : "Confirm & Create Transaction"}
+            </button>
+          </div>
         </form>
       </div>
     </div>

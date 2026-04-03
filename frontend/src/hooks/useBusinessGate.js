@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { resolveHomeRoute, useAuth } from "../context/AuthContext";
@@ -31,8 +31,15 @@ export const useBusinessGate = (currentPath) => {
   const navigate = useNavigate();
   const [data, setData] = useState({ business_status: null, payment: null, kyc: null, rejection_reason: null });
   const [loading, setLoading] = useState(true);
+  const hasCheckedRef = useRef(false);
 
   useEffect(() => {
+    // Only check once per user session, not on every route change
+    if (hasCheckedRef.current) {
+      setLoading(false);
+      return;
+    }
+
     if (!user) {
       setLoading(false);
       return;
@@ -42,8 +49,11 @@ export const useBusinessGate = (currentPath) => {
       setLoading(false);
       return;
     }
+
+    hasCheckedRef.current = true;
     let cancelled = false;
     setLoading(true);
+
     const run = async () => {
       try {
         const profile = await refreshUser();
@@ -78,7 +88,7 @@ export const useBusinessGate = (currentPath) => {
     return () => {
       cancelled = true;
     };
-  }, [user, currentPath]);
+  }, [user?.id]); // Only re-run when user.id changes, not on route changes
 
   return { ...data, loading };
 };

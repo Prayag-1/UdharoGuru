@@ -2,9 +2,8 @@ from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import BusinessKYC, BusinessPayment, BusinessProfile, User
+from .models import BusinessKYC, BusinessPayment, BusinessProfile, LoginOTP, User
 
 
 class ConflictError(APIException):
@@ -73,34 +72,49 @@ class MeSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class SimpleTokenObtainPairSerializer(TokenObtainPairSerializer):
+class LoginRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField()
+
     def validate(self, attrs):
-        # Accept both 'email' and 'username' fields
-        email = attrs.get("email") or attrs.get(self.username_field) or attrs.get("username")
+        email = attrs.get("email")
         password = attrs.get("password")
-        
-        if not email:
-            raise serializers.ValidationError({"detail": "Email or username is required."})
-        if not password:
-            raise serializers.ValidationError({"detail": "Password is required."})
-        
+
         user_lookup = User.objects.filter(email=email).first()
         if not user_lookup:
             raise serializers.ValidationError({"detail": "User not found."})
         if not user_lookup.is_active:
             raise serializers.ValidationError({"detail": "This account is inactive."})
 
-        # Use our custom EmailBackend which accepts email parameter
         user = authenticate(self.context.get("request"), email=email, password=password)
         if not user:
             raise serializers.ValidationError({"detail": "Invalid credentials."})
 
-        self.user = user
-        refresh = self.get_token(user)
-        return {
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
-        }
+        attrs["user"] = user
+        return attrs
+
+
+class VerifyOTPSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    otp = serializers.RegexField(r"^\d{6}$", max_length=6, min_length=6)
+
+    def validate(self, attrs):
+        user = User.objects.filter(id=attrs["user_id"]).first()
+        if not user:
+            raise serializers.ValidationError({"detail": "User not found."})
+
+        login_otp = LoginOTP.objects.filter(user=user).order_by("-created_at").first()
+        if not login_otp:
+            raise serializers.ValidationError({"detail": "OTP not found. Please login again."})
+        if login_otp.is_expired():
+            login_otp.delete()
+            raise serializers.ValidationError({"detail": "OTP expired. Please login again."})
+        if login_otp.otp != attrs["otp"]:
+            raise serializers.ValidationError({"detail": "Invalid OTP."})
+
+        attrs["user"] = user
+        attrs["login_otp"] = login_otp
+        return attrs
 
 
 class BusinessPaymentSerializer(serializers.ModelSerializer):

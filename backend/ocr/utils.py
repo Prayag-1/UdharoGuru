@@ -1,4 +1,3 @@
-
 import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -6,282 +5,414 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import pytesseract
 from PIL import Image, ImageFilter, ImageOps
 
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+    np = None
+
+
+RESTAURANT_KEYWORDS = ("SUBTOTAL", "TAX", "TABLE", "SERVER")
+RETAIL_KEYWORDS = ("DESCRIPTION", "PRICE", "CASH RECEIPT")
+DATE_PATTERNS = (
+    "%Y-%m-%d",
+    "%Y/%m/%d",
+    "%d-%m-%Y",
+    "%d/%m/%Y",
+    "%m-%d-%Y",
+    "%m/%d/%Y",
+    "%d-%m-%y",
+    "%d/%m/%y",
+)
+AMOUNT_CAPTURE = r"([0-9][0-9,]*(?:\.[0-9]{1,2})?)"
+AMOUNT_TOKEN = rf"[$]?\s*{AMOUNT_CAPTURE}"
+
+
+def quantize_money(value):
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def normalize_whitespace(value):
+    return re.sub(r"\s+", " ", (value or "")).strip()
+
+
+def normalize_ocr_text(text):
+    cleaned = (text or "").replace("\x0c", " ")
+    cleaned = cleaned.replace("|", "I")
+    cleaned = cleaned.replace("§", "S")
+    cleaned = cleaned.replace("O00", "000")
+    cleaned = cleaned.replace("TOTAL:", "TOTAL ")
+    return cleaned
+
+
+def choose_psm(image):
+    if hasattr(image, "shape"):
+        height, width = image.shape[:2]
+    else:
+        width, height = image.size
+    aspect_ratio = height / max(width, 1)
+    if aspect_ratio > 2.0:
+        return 4
+    return 6 if width >= 900 else 11
+
 
 def preprocess_image(image_path):
-    """
-    Basic preprocessing to improve OCR fidelity:
-    - grayscale
-    - noise reduction
-    - light thresholding
-    """
-    img = Image.open(image_path)
-    gray = ImageOps.grayscale(img)
-    denoised = gray.filter(ImageFilter.MedianFilter(size=3))
-    boosted = ImageOps.autocontrast(denoised)
-    return boosted.point(lambda x: 0 if x < 140 else 255, mode="1")
+    if cv2 is None or np is None:
+        img = Image.open(image_path)
+        gray = ImageOps.grayscale(img)
+        width, height = gray.size
+        longest_edge = max(width, height)
+        if longest_edge < 1600:
+            scale = max(2.0, 1600 / max(longest_edge, 1))
+            gray = gray.resize((int(width * scale), int(height * scale)))
+        denoised = gray.filter(ImageFilter.MedianFilter(size=3))
+        boosted = ImageOps.autocontrast(denoised)
+        return boosted.point(lambda x: 255 if x > 160 else 0, mode="L")
+
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError("Unable to read image for OCR.")
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    height, width = gray.shape[:2]
+    longest_edge = max(height, width)
+    if longest_edge < 1600:
+        scale = max(2.0, 1600 / max(longest_edge, 1))
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+    denoised = cv2.fastNlMeansDenoising(gray, None, 20, 7, 21)
+    blurred = cv2.GaussianBlur(denoised, (5, 5), 0)
+    thresholded = cv2.adaptiveThreshold(
+        blurred,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        35,
+        11,
+    )
+    kernel = np.ones((2, 2), np.uint8)
+    cleaned = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, kernel, iterations=1)
+    cleaned = cv2.medianBlur(cleaned, 3)
+    if np.mean(cleaned) < 127:
+        cleaned = cv2.bitwise_not(cleaned)
+    return cleaned
 
 
 def run_ocr(image_path):
-    """
-    Extract raw text from image using Tesseract after preprocessing.
-    """
     processed = preprocess_image(image_path)
-    return pytesseract.image_to_string(processed, config="--psm 6")
+    psm = choose_psm(processed)
+    config = f"--oem 3 --psm {psm}"
+    text = pytesseract.image_to_string(processed, config=config)
+    return normalize_ocr_text(text)
+
+
+def parse_decimal(value):
+    if value is None:
+        return None
+    candidate = str(value).strip()
+    if not candidate:
+        return None
+    candidate = candidate.replace(",", "")
+    candidate = re.sub(r"[^0-9.\-]", "", candidate)
+    if not candidate:
+        return None
+    try:
+        return quantize_money(Decimal(candidate))
+    except InvalidOperation:
+        return None
+
+
+def decimal_to_float(value):
+    return float(value) if value is not None else None
+
+
+def find_first_amount(text, patterns):
+    lines = [normalize_whitespace(line) for line in (text or "").splitlines() if normalize_whitespace(line)]
+    for pattern in patterns:
+        for line in lines:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                amount = parse_decimal(match.group(1))
+                if amount is not None:
+                    return amount
+    return None
+
+
+def extract_amount_candidates(text):
+    candidates = []
+    for match in re.finditer(AMOUNT_TOKEN, text or "", re.IGNORECASE):
+        amount = parse_decimal(match.group(1))
+        if amount is not None:
+            candidates.append(amount)
+    return candidates
 
 
 def extract_amount(text):
-    """
-    Heuristic: pick the largest monetary-looking number.
-    """
-    candidates = re.findall(r"[-+]?\d+[.,]?\d*", text or "")
-    amounts = []
-    for raw in candidates:
-        normalized = raw.replace(",", "")
-        try:
-            val = Decimal(normalized)
-            amounts.append(val)
-        except InvalidOperation:
-            continue
-    if not amounts:
-        return None
-    return max(amounts).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    amounts = extract_amount_candidates(text)
+    return max(amounts) if amounts else None
 
 
 def extract_date(text):
-    """
-    Try multiple common date patterns.
-    """
     if not text:
         return None
-    patterns = [
-        r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})",  # YYYY-MM-DD
-        r"(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})",  # DD/MM/YYYY or MM/DD/YYYY
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if not match:
-            continue
-        raw_parts = match.groups()
-        parts = [int(p) for p in raw_parts]
-        try:
-            if len(raw_parts[0]) == 4:
-                year, month, day = parts
-            else:
-                first, second, year = parts
-                # Heuristic: if first > 12, treat as day/month.
-                if first > 12:
-                    day, month = first, second
-                else:
-                    month, day = first, second
-                if year < 100:
-                    year += 2000
-            return datetime(year, month, day).date()
-        except Exception:
-            continue
+    normalized = normalize_ocr_text(text)
+    for pattern in (r"\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b", r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"):
+        for match in re.finditer(pattern, normalized):
+            raw = match.group(0)
+            for fmt in DATE_PATTERNS:
+                try:
+                    parsed = datetime.strptime(raw, fmt).date()
+                    if parsed.year < 2000:
+                        parsed = parsed.replace(year=parsed.year + 2000)
+                    return parsed
+                except ValueError:
+                    continue
     return None
 
 
 def extract_merchant(text):
-    """
-    Pick the first meaningful line that looks like a merchant name.
-    """
     if not text:
         return None
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    lines = [normalize_whitespace(line) for line in text.splitlines() if normalize_whitespace(line)]
+    skip_tokens = {"subtotal", "tax", "total", "description", "price", "cash receipt", "table", "server"}
     for line in lines:
-        # Skip lines that look like amounts or dates.
-        if re.search(r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}", line):
+        if any(token in line.lower() for token in skip_tokens):
             continue
-        if re.search(r"\d+[.,]\d{2}", line):
+        if re.search(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", line):
             continue
-        if len(re.sub(r"[^A-Za-z]", "", line)) < 3:
+        if re.search(AMOUNT_TOKEN, line):
             continue
-        return line[:255]
+        letters = re.sub(r"[^A-Za-z& ]", "", line).strip()
+        if len(letters) >= 3:
+            return line[:255]
     return None
 
 
-def parse_ocr_text_to_credit_sale(text):
-    """
-    LAYER 2 — Data Parsing
-    
-    Convert raw OCR text into structured credit sale data.
-    
-    Returns:
-    {
-        "customer_name": "...",
-        "items": [
-            {"name": "...", "quantity": 1, "unit_price": 0.00, "subtotal": 0.00}
-        ],
-        "total_amount": 0.00,
-        "confidence": "high|medium|low",
-        "warning": "optional warning message"
-    }
-    """
-    if not text or not text.strip():
-        return {
-            "customer_name": "",
-            "items": [],
-            "total_amount": 0.00,
-            "confidence": "low",
-            "warning": "Empty or invalid text"
-        }
-    
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    
-    # Initialize result with proper defaults
-    result = {
-        "customer_name": "",
-        "items": [],
-        "total_amount": 0.00,
-        "confidence": "medium",
-        "warning": None
-    }
-    
-    # Extract customer name (usually first meaningful line)
-    customer_name = extract_merchant(text)
-    if customer_name:
-        result["customer_name"] = customer_name
-    
-    # Extract total amount
-    total_amount = extract_total_amount(text)
-    if total_amount:
-        result["total_amount"] = float(total_amount)
-    
-    # Parse items from lines
-    items = parse_items_from_lines(lines)
-    result["items"] = items if items else []
-    
-    # Ensure all items have complete structure with proper float types
-    for item in result["items"]:
-        item["quantity"] = int(item.get("quantity", 1))
-        item["unit_price"] = float(item.get("unit_price", 0.0))
-        item["subtotal"] = float(item.get("subtotal", 0.0))
-    
-    # Validate parsing and set confidence
-    if not result["customer_name"]:
-        result["confidence"] = "low"
-        result["warning"] = "Customer name not detected"
-    elif not result["items"]:
-        result["confidence"] = "medium"
-        result["warning"] = "No items detected in text. You can add them manually."
-    elif not result["total_amount"] or result["total_amount"] == 0:
-        result["confidence"] = "medium"
-        result["warning"] = "Total amount not clearly detected. Please verify."
-    else:
-        # Check if extracted data seems reasonable
-        if result["customer_name"] and result["items"] and result["total_amount"] > 0:
-            result["confidence"] = "high"
-            result["warning"] = None
-    
-    return result
+def detect_bill_type(text):
+    upper_text = (text or "").upper()
+    restaurant_hits = sum(keyword in upper_text for keyword in RESTAURANT_KEYWORDS)
+    retail_hits = sum(keyword in upper_text for keyword in RETAIL_KEYWORDS)
+
+    if restaurant_hits >= 2:
+        return "restaurant"
+    if retail_hits >= 2:
+        return "retail"
+    if "CASH RECEIPT" in upper_text:
+        return "retail"
+    if "TABLE" in upper_text and "SERVER" in upper_text:
+        return "restaurant"
+    return "unknown"
 
 
-def extract_total_amount(text):
-    """
-    Extract total amount by looking for 'total' keyword.
-    Fallback: use largest monetary value.
-    """
-    if not text:
-        return None
-    
-    # Look for "total" keyword
-    text_lower = text.lower()
-    total_keywords = ["total", "sum", "amount due", "final"]
-    
-    for keyword in total_keywords:
-        # Find total keyword and extract number after it
-        pattern = rf"{keyword}\s*[:\-]?\s*([\d,.\s]+)"
-        matches = re.finditer(pattern, text_lower)
-        for match in matches:
-            amount_str = match.group(1).replace(",", "").replace(" ", "").strip()
-            try:
-                amount = Decimal(amount_str)
-                if amount > 0:
-                    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            except InvalidOperation:
-                continue
-    
-    # Fallback: largest amount in text
-    return extract_amount(text)
-
-
-def parse_items_from_lines(lines):
-    """
-    Parse item list from lines.
-    
-    Heuristics:
-    1. Look for lines with quantities and prices
-    2. Extract product name, qty, unit_price
-    3. Calculate subtotal
-    """
+def parse_restaurant_items(text):
     items = []
-    
-    # Skip header and non-item lines
-    item_lines = []
-    for line in lines:
-        # Skip if line is all numbers or all text
-        has_numbers = bool(re.search(r'\d', line))
-        has_letters = bool(re.search(r'[a-zA-Z]', line))
-        
-        # Item lines should have both words and numbers
-        if has_numbers and has_letters:
-            item_lines.append(line)
-    
-    # Parse each potential item line
-    for line in item_lines:
-        item = parse_item_line(line)
-        if item and item.get("name"):
-            items.append(item)
-    
+    for raw_line in text.splitlines():
+        line = normalize_whitespace(raw_line)
+        if not line:
+            continue
+        if any(keyword in line.upper() for keyword in ("SUBTOTAL", "TOTAL", "TAX", "TABLE", "SERVER")):
+            continue
+
+        match = re.search(r"^(?P<qty>\d+)\s+(?P<name>.+?)\s+\$?(?P<price>[0-9][0-9,]*(?:\.[0-9]{1,2})?)$", line)
+        if not match:
+            continue
+
+        qty = int(match.group("qty"))
+        price = parse_decimal(match.group("price"))
+        if price is None or qty <= 0:
+            continue
+        subtotal = quantize_money(price * qty)
+        items.append(
+            {
+                "quantity": qty,
+                "name": normalize_whitespace(match.group("name"))[:100],
+                "unit_price": float(price),
+                "subtotal": float(subtotal),
+            }
+        )
     return items
 
 
-def parse_item_line(line):
-    """
-    Parse a single line into item data.
-    
-    Patterns:
-    - "rice 2kg 200" → name: rice, qty: 2, unit_price: 200
-    - "milk 80" → name: milk, unit_price: 80
-    - "sugar x2 150" → name: sugar, qty: 2, unit_price: 150
-    """
-    # Extract all numbers from line
-    numbers = re.findall(r'\d+(?:[.,]\d+)?', line)
-    
-    # Remove numbers from line to get product name
-    name = re.sub(r'\d+(?:[.,]\d+)?|[x×]\d+', '', line).strip()
-    
-    # Clean up name (remove common keywords)
-    name = re.sub(r'(kg|l|piece|pcs|qty|unit|price|rs|₹|€|$|amount)', '', name, flags=re.IGNORECASE).strip()
-    
-    if not name or len(name) < 2:
-        return None
-    
-    try:
-        # If we have 2+ numbers, first is qty, second is price
-        if len(numbers) >= 2:
-            quantity = int(float(numbers[0].replace(',', '')))
-            unit_price = Decimal(numbers[1].replace(',', ''))
-            subtotal = Decimal(quantity) * unit_price
-        
-        # If we have 1 number, it's the price (qty defaults to 1)
-        elif len(numbers) == 1:
-            quantity = 1
-            unit_price = Decimal(numbers[0].replace(',', ''))
-            subtotal = unit_price
-        else:
-            return None
-        
-        # Validate: price shouldn't be too low (less than 1) or unreasonable
-        if unit_price < 1 or unit_price > Decimal('999999'):
-            return None
-        
+def parse_retail_items(text):
+    items = []
+    in_description_block = False
+
+    for raw_line in text.splitlines():
+        line = normalize_whitespace(raw_line)
+        if not line:
+            continue
+
+        upper = line.upper()
+        if "DESCRIPTION" in upper and "PRICE" in upper:
+            in_description_block = True
+            continue
+        if any(keyword in upper for keyword in ("TOTAL", "CASH", "CHANGE")):
+            in_description_block = False if "TOTAL" in upper else in_description_block
+        if not in_description_block:
+            continue
+
+        match = re.search(r"^(?P<name>.+?)\s+\$?(?P<price>[0-9][0-9,]*(?:\.[0-9]{1,2})?)$", line)
+        if not match:
+            continue
+
+        price = parse_decimal(match.group("price"))
+        if price is None:
+            continue
+        items.append(
+            {
+                "quantity": 1,
+                "name": normalize_whitespace(match.group("name"))[:100],
+                "unit_price": float(price),
+                "subtotal": float(price),
+            }
+        )
+    return items
+
+
+def parse_restaurant_bill(text):
+    total = find_first_amount(
+        text,
+        (
+            rf"\bTOTAL\s*\$?\s*{AMOUNT_CAPTURE}",
+            rf"\bTotal\s*\$?\s*{AMOUNT_CAPTURE}",
+            rf"\bAMOUNT DUE\s*\$?\s*{AMOUNT_CAPTURE}",
+        ),
+    ) or extract_amount(text)
+    subtotal = find_first_amount(text, (rf"\bSubtotal\s*\$?\s*{AMOUNT_CAPTURE}",))
+    tax = find_first_amount(text, (rf"\bTax\s*\$?\s*{AMOUNT_CAPTURE}",))
+
+    return {
+        "bill_type": "restaurant",
+        "vendor": extract_merchant(text),
+        "date": extract_date(text),
+        "total_amount": total,
+        "subtotal": subtotal,
+        "tax": tax,
+        "items": parse_restaurant_items(text),
+        "payment_details": {},
+    }
+
+
+def parse_retail_bill(text):
+    total = find_first_amount(
+        text,
+        (
+            rf"\bTotal\s*\$?\s*{AMOUNT_CAPTURE}",
+            rf"\bTOTAL\s*\$?\s*{AMOUNT_CAPTURE}",
+            rf"\bGrand Total\s*\$?\s*{AMOUNT_CAPTURE}",
+        ),
+    ) or extract_amount(text)
+    cash = find_first_amount(text, (rf"\bCash\s*\$?\s*{AMOUNT_CAPTURE}",))
+    change = find_first_amount(text, (rf"\bChange\s*\$?\s*{AMOUNT_CAPTURE}",))
+
+    return {
+        "bill_type": "retail",
+        "vendor": extract_merchant(text),
+        "date": extract_date(text),
+        "total_amount": total,
+        "subtotal": None,
+        "tax": None,
+        "items": parse_retail_items(text),
+        "payment_details": {
+            "cash": float(cash) if cash is not None else None,
+            "change": float(change) if change is not None else None,
+        },
+    }
+
+
+def parse_unknown_bill(text):
+    return {
+        "bill_type": "unknown",
+        "vendor": extract_merchant(text),
+        "date": extract_date(text),
+        "total_amount": find_first_amount(
+            text,
+            (
+                rf"\bTOTAL\s*\$?\s*{AMOUNT_CAPTURE}",
+                rf"\bGrand Total\s*\$?\s*{AMOUNT_CAPTURE}",
+                rf"\bAmount Due\s*\$?\s*{AMOUNT_CAPTURE}",
+            ),
+        ) or extract_amount(text),
+        "subtotal": None,
+        "tax": None,
+        "items": [],
+        "payment_details": {},
+    }
+
+
+def confidence_from_fields(bill_type, total_amount, items, subtotal, tax):
+    score = 0
+    if bill_type in {"restaurant", "retail"}:
+        score += 2
+    if total_amount is not None:
+        score += 2
+    if items:
+        score += 1
+    if subtotal is not None:
+        score += 1
+    if tax is not None:
+        score += 1
+
+    if score >= 5:
+        return "high"
+    if score >= 3:
+        return "medium"
+    return "low"
+
+
+def extract_total_amount(text):
+    parsed = parse_ocr_text_to_credit_sale(text)
+    total = parsed.get("total_amount")
+    return parse_decimal(total) if total not in (None, "") else None
+
+
+def parse_ocr_text_to_credit_sale(text):
+    normalized_text = normalize_ocr_text(text)
+    if not normalized_text.strip():
         return {
-            "name": name[:100],
-            "quantity": quantity,
-            "unit_price": float(unit_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-            "subtotal": float(subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            "customer_name": "",
+            "vendor": None,
+            "items": [],
+            "total_amount": None,
+            "subtotal": None,
+            "tax": None,
+            "date": None,
+            "bill_type": "unknown",
+            "payment_details": {},
+            "confidence": "low",
+            "warning": "No OCR text was extracted. Manual review is required.",
+            "manual_review_required": True,
         }
-    
-    except (ValueError, InvalidOperation):
-        return None
+
+    bill_type = detect_bill_type(normalized_text)
+    if bill_type == "restaurant":
+        parsed = parse_restaurant_bill(normalized_text)
+    elif bill_type == "retail":
+        parsed = parse_retail_bill(normalized_text)
+    else:
+        parsed = parse_unknown_bill(normalized_text)
+
+    confidence = confidence_from_fields(
+        parsed["bill_type"], parsed["total_amount"], parsed["items"], parsed["subtotal"], parsed["tax"]
+    )
+    warning = None
+    if parsed["total_amount"] is None:
+        warning = "Total amount was not confidently detected. Partial data returned for manual review."
+    elif parsed["bill_type"] == "unknown":
+        warning = "Bill type not recognized. Partial data returned for manual review."
+
+    return {
+        "customer_name": parsed["vendor"] or "",
+        "vendor": parsed["vendor"],
+        "items": parsed["items"],
+        "total_amount": decimal_to_float(parsed["total_amount"]),
+        "subtotal": decimal_to_float(parsed["subtotal"]),
+        "tax": decimal_to_float(parsed["tax"]),
+        "date": parsed["date"].isoformat() if parsed["date"] else None,
+        "bill_type": parsed["bill_type"],
+        "payment_details": parsed["payment_details"],
+        "confidence": confidence,
+        "warning": warning,
+        "manual_review_required": parsed["total_amount"] is None or confidence == "low",
+    }

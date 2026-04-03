@@ -1,19 +1,22 @@
+from django.conf import settings
+from django.core.mail import send_mail
+from django.utils.crypto import get_random_string
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import BusinessKYC, BusinessPayment, BusinessProfile
+from .models import BusinessKYC, BusinessPayment, BusinessProfile, LoginOTP
 from .serializers import (
     BusinessKYCSerializer,
     BusinessPaymentSerializer,
     BusinessProfileSerializer,
+    LoginRequestSerializer,
     MeSerializer,
     RegisterSerializer,
-    SimpleTokenObtainPairSerializer,
     UserSerializer,
+    VerifyOTPSerializer,
 )
 
 ALLOWED_BUSINESS_STATUSES = {"PAYMENT_PENDING", "KYC_PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED"}
@@ -63,9 +66,73 @@ class RegisterView(APIView):
         )
 
 
-class SimpleTokenObtainPairView(TokenObtainPairView):
-    serializer_class = SimpleTokenObtainPairSerializer
+def _generate_otp():
+    return get_random_string(6, allowed_chars="0123456789")
+
+
+def _send_otp_email(user, otp):
+    send_mail(
+        subject="Your OTP Code",
+        message=f"Your OTP is {otp}. It expires in {settings.OTP_EXPIRY_MINUTES} minutes.",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        fail_silently=False,
+    )
+
+
+class LoginView(APIView):
     permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LoginRequestSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+
+        LoginOTP.objects.filter(user=user).delete()
+        otp = _generate_otp()
+        login_otp = LoginOTP.objects.create(user=user, otp=otp)
+
+        try:
+            _send_otp_email(user, otp)
+        except Exception:
+            login_otp.delete()
+            return Response(
+                {"detail": "Unable to send OTP email. Check SMTP configuration and try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "otp_required": True,
+                "user_id": user.id,
+                "email": user.email,
+                "message": "OTP sent to your email.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class VerifyOTPView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = VerifyOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data["user"]
+        login_otp = serializer.validated_data["login_otp"]
+        login_otp.delete()
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "message": "OTP verified successfully.",
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": UserSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class MeView(APIView):

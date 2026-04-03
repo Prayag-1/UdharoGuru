@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import { listBusinessOcr, uploadBusinessOcr } from "../../api/business";
+import { deleteBusinessOcr, listBusinessOcr, uploadBusinessOcr } from "../../api/business";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessGate } from "../../hooks/useBusinessGate";
 
@@ -35,6 +35,7 @@ export default function OcrList() {
   const [docs, setDocs] = useState([]);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [uploadError, setUploadError] = useState("");
   const [success, setSuccess] = useState(location.state?.success || "");
 
@@ -90,6 +91,30 @@ export default function OcrList() {
     }
   };
 
+  const handleDelete = async (doc) => {
+    if (deletingId) return;
+    const confirmed = window.confirm(
+      doc.status === "CONFIRMED"
+        ? "Delete this OCR record and its linked transaction?"
+        : "Delete this OCR draft?"
+    );
+    if (!confirmed) return;
+
+    setDeletingId(doc.id);
+    setUploadError("");
+    setSuccess("");
+    try {
+      await deleteBusinessOcr(doc.id);
+      setDocs((prev) => prev.filter((item) => item.id !== doc.id));
+      setSuccess(doc.status === "CONFIRMED" ? "OCR record and linked transaction deleted." : "OCR draft deleted.");
+    } catch (err) {
+      const msg = err?.response?.data?.detail || "Unable to delete OCR record.";
+      setUploadError(msg);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const sortedDocs = useMemo(() => {
     const copy = [...docs];
     copy.sort((a, b) => {
@@ -135,18 +160,18 @@ export default function OcrList() {
         </div>
       ) : (
         <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 0.6fr", padding: "10px 12px", fontWeight: 800, color: "#1e293b", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr", padding: "10px 12px", fontWeight: 800, color: "#1e293b", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12 }}>
             <span>Uploaded</span>
             <span>Merchant</span>
             <span>Amount</span>
-            <span>Status</span>
+            <span>Status / Actions</span>
           </div>
           {sortedDocs.map((doc) => (
             <div
               key={doc.id}
               style={{
                 display: "grid",
-                gridTemplateColumns: "1.2fr 1fr 1fr 0.6fr",
+                gridTemplateColumns: "1.2fr 1fr 1fr 1fr",
                 padding: "12px 12px",
                 borderRadius: 12,
                 border: "1px solid #e2e8f0",
@@ -162,7 +187,7 @@ export default function OcrList() {
               </div>
               <div style={{ fontWeight: 700 }}>{doc.extracted_merchant || "Unknown"}</div>
               <div style={{ fontWeight: 800 }}>{formatCurrency(doc.extracted_amount)}</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <span
                   style={{
                     padding: "6px 10px",
@@ -178,7 +203,6 @@ export default function OcrList() {
                 <Link
                   to={`/business/ocr/${doc.id}`}
                   style={{
-                    marginLeft: "auto",
                     fontWeight: 800,
                     color: "#0f172a",
                     textDecoration: "none",
@@ -188,8 +212,25 @@ export default function OcrList() {
                     background: "#f8fafc",
                   }}
                 >
-                  {doc.status === "DRAFT" ? "Review" : "View"}
+                  {doc.status === "DRAFT" ? "Review" : "Edit"}
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(doc)}
+                  disabled={deletingId === doc.id}
+                  style={{
+                    fontWeight: 800,
+                    color: "#b91c1c",
+                    border: "1px solid #fecaca",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    background: "#fff1f2",
+                    cursor: deletingId === doc.id ? "not-allowed" : "pointer",
+                    opacity: deletingId === doc.id ? 0.7 : 1,
+                  }}
+                >
+                  {deletingId === doc.id ? "Deleting..." : "Delete"}
+                </button>
               </div>
             </div>
           ))}

@@ -1,5 +1,7 @@
 import api from "./apiClient";
 
+export const getCreditSales = () => api.get("credit-sales/");
+
 export const submitBusinessPayment = (formData) =>
   api.post("business/payment/submit/", formData, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -32,6 +34,11 @@ export const getBusinessOcr = (id) => api.get(`business/ocr/${id}/`);
 
 export const confirmBusinessOcr = (id, payload) =>
   api.post(`business/ocr/${id}/confirm/`, payload);
+
+export const updateBusinessOcr = (id, payload) =>
+  api.patch(`business/ocr/${id}/`, payload);
+
+export const deleteBusinessOcr = (id) => api.delete(`business/ocr/${id}/`);
 
 export const getBusinessLedger = () => api.get("business/ledger/");
 export const getBusinessLedgerSummary = () => api.get("business/ledger/summary/");

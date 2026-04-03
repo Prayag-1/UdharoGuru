@@ -14,6 +14,8 @@ class OCRDocumentSerializer(serializers.Serializer):
     status = serializers.CharField()
     created_at = serializers.DateTimeField()
     business_transaction_id = serializers.IntegerField(allow_null=True)
+    transaction_type = serializers.CharField(allow_null=True, required=False)
+    transaction_note = serializers.CharField(allow_null=True, required=False)
     image = serializers.CharField(allow_null=True, required=False)
 
 
