@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { getBusinessStatus } from "../api/business";
 import { resolveHomeRoute, useAuth } from "../context/AuthContext";
 
 const targetForStatus = (status) => {
@@ -31,15 +32,8 @@ export const useBusinessGate = (currentPath) => {
   const navigate = useNavigate();
   const [data, setData] = useState({ business_status: null, payment: null, kyc: null, rejection_reason: null });
   const [loading, setLoading] = useState(true);
-  const hasCheckedRef = useRef(false);
 
   useEffect(() => {
-    // Only check once per user session, not on every route change
-    if (hasCheckedRef.current) {
-      setLoading(false);
-      return;
-    }
-
     if (!user) {
       setLoading(false);
       return;
@@ -50,25 +44,27 @@ export const useBusinessGate = (currentPath) => {
       return;
     }
 
-    hasCheckedRef.current = true;
     let cancelled = false;
     setLoading(true);
 
     const run = async () => {
       try {
-        const profile = await refreshUser();
+        const [profile, statusRes] = await Promise.all([refreshUser(), getBusinessStatus()]);
         if (cancelled) return;
-        const target = targetForStatus(profile?.business_status);
-        if (profile) {
+        const statusData = statusRes?.data || {};
+        const effectiveStatus = statusData.business_status || profile?.business_status;
+        const target = targetForStatus(effectiveStatus);
+
+        if (profile || statusData) {
           setData({
-            business_status: profile.business_status,
-            payment: null,
-            kyc: { is_approved: profile.kyc_status === "APPROVED" },
-            rejection_reason: null,
-            kyc_status: profile.kyc_status,
+            business_status: effectiveStatus,
+            payment: statusData.payment || null,
+            kyc: statusData.kyc || { is_approved: profile?.kyc_status === "APPROVED" },
+            rejection_reason: statusData.kyc?.rejection_reason || null,
+            kyc_status: statusData.kyc_status || profile?.kyc_status || null,
           });
         }
-        if (profile?.business_status === "APPROVED" && approvedRedirectPaths.has(currentPath)) {
+        if (effectiveStatus === "APPROVED" && approvedRedirectPaths.has(currentPath)) {
           navigate("/business/dashboard", { replace: true });
           return;
         }
@@ -88,7 +84,7 @@ export const useBusinessGate = (currentPath) => {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]); // Only re-run when user.id changes, not on route changes
+  }, [currentPath, navigate, refreshUser, user?.id]);
 
   return { ...data, loading };
 };

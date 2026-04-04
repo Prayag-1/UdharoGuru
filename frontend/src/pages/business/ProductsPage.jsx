@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getProducts, createProduct, deleteProduct } from "../../api/products";
-import { useAuth } from "../../context/AuthContext";
+import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 import "./ProductsPage.css";
 
 const formatCurrency = (value) => {
@@ -30,8 +30,13 @@ export default function ProductsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
+    if (user.account_type !== "BUSINESS") {
+      navigate(resolveHomeRoute(user), { replace: true });
+      return;
+    }
     loadProducts();
-  }, []);
+  }, [user?.id, navigate]);
 
   const loadProducts = async () => {
     setLoading(true);

@@ -7,8 +7,10 @@ import "./BusinessLayout.css";
 export default function BusinessLayout() {
   const location = useLocation();
   const { user, loading: authLoading } = useAuth();
-  const { loading, business_status } = useBusinessGate(location.pathname);
+  const { loading, business_status, payment, kyc } = useBusinessGate(location.pathname);
   const isApproved = business_status === "APPROVED";
+  const showPayment = !payment?.is_verified;
+  const showKyc = payment?.is_verified && !kyc?.is_approved && business_status !== "UNDER_REVIEW" && business_status !== "REJECTED";
 
   const navItems = [
     { to: "/business/dashboard", label: "Dashboard" },
@@ -17,8 +19,8 @@ export default function BusinessLayout() {
     { to: "/business/credit-sales", label: "Credit Sales", requiresApproval: true },
     { to: "/business/payments", label: "Payments", requiresApproval: true },
     { to: "/business/ocr", label: "OCR", requiresApproval: true },
-    { to: "/business/payment", label: "Payment" },
-    { to: "/business/kyc", label: "KYC" },
+    { to: "/business/payment", label: "Payment", visible: showPayment },
+    { to: "/business/kyc", label: "KYC", visible: showKyc },
   ];
 
   const handleLogout = () => {
@@ -69,6 +71,7 @@ export default function BusinessLayout() {
 
         <nav className="sidebar-nav">
           {navItems
+            .filter((item) => item.visible !== false)
             .filter((item) => isApproved || !item.requiresApproval)
             .map((item) => (
               <NavLink

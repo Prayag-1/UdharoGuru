@@ -63,8 +63,9 @@ export default function PaymentsPage() {
   };
 
   useEffect(() => {
+    if (!user || user.account_type !== "BUSINESS") return;
     loadData();
-  }, []);
+  }, [user?.id]);
 
   const handleDelete = async (payment) => {
     if (!window.confirm(`Delete payment of Rs. ${formatMoney(payment.amount)} on ${payment.payment_date}?`)) {

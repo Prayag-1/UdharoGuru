@@ -1,22 +1,19 @@
-from django.conf import settings
-from django.core.mail import send_mail
-from django.utils.crypto import get_random_string
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import BusinessKYC, BusinessPayment, BusinessProfile, LoginOTP
+from .models import BusinessKYC, BusinessPayment, ensure_business_profile
 from .serializers import (
     BusinessKYCSerializer,
     BusinessPaymentSerializer,
     BusinessProfileSerializer,
-    LoginRequestSerializer,
     MeSerializer,
     RegisterSerializer,
+    SimpleTokenObtainPairSerializer,
     UserSerializer,
-    VerifyOTPSerializer,
 )
 
 ALLOWED_BUSINESS_STATUSES = {"PAYMENT_PENDING", "KYC_PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED"}
@@ -31,20 +28,50 @@ def _normalize_business_status(user):
     return current
 
 
-def _sync_with_kyc(user):
-    """
-    Keep business_status and KYC.is_approved aligned.
-    """
+def _sync_business_access_state(user):
+    current_status = _normalize_business_status(user)
+    if getattr(user, "account_type", "").upper() != "BUSINESS":
+        return None, None, current_status
+
+    payment = getattr(user, "business_payment", None)
     kyc = getattr(user, "business_kyc", None)
-    if not kyc:
-        return None
-    if kyc.is_approved and user.business_status != "APPROVED":
-        user.business_status = "APPROVED"
-        user.save(update_fields=["business_status"])
-    elif user.business_status == "APPROVED" and not kyc.is_approved:
-        kyc.is_approved = True
-        kyc.save(update_fields=["is_approved", "updated_at"])
-    return kyc
+    next_status = current_status
+    next_kyc_status = getattr(user, "kyc_status", "PENDING")
+    payment_completed = bool(payment)
+
+    if kyc and not kyc.is_approved and next_kyc_status == "REJECTED":
+        next_status = "REJECTED"
+    elif not payment_completed:
+        next_status = "PAYMENT_PENDING"
+        if next_kyc_status == "APPROVED":
+            next_kyc_status = "PENDING"
+    elif not kyc:
+        next_status = "KYC_PENDING"
+        if next_kyc_status == "APPROVED":
+            next_kyc_status = "PENDING"
+    elif kyc.is_approved:
+        next_status = "APPROVED"
+        next_kyc_status = "APPROVED"
+    elif next_kyc_status == "REJECTED":
+        next_status = "REJECTED"
+    elif current_status == "UNDER_REVIEW":
+        next_status = "UNDER_REVIEW"
+        next_kyc_status = "PENDING"
+    else:
+        next_status = "KYC_PENDING"
+        next_kyc_status = "PENDING"
+
+    update_fields = []
+    if user.business_status != next_status:
+        user.business_status = next_status
+        update_fields.append("business_status")
+    if user.kyc_status != next_kyc_status:
+        user.kyc_status = next_kyc_status
+        update_fields.append("kyc_status")
+    if update_fields:
+        user.save(update_fields=update_fields)
+
+    return payment, kyc, next_status
 
 
 class RegisterView(APIView):
@@ -66,73 +93,9 @@ class RegisterView(APIView):
         )
 
 
-def _generate_otp():
-    return get_random_string(6, allowed_chars="0123456789")
-
-
-def _send_otp_email(user, otp):
-    send_mail(
-        subject="Your OTP Code",
-        message=f"Your OTP is {otp}. It expires in {settings.OTP_EXPIRY_MINUTES} minutes.",
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-        fail_silently=False,
-    )
-
-
-class LoginView(APIView):
+class SimpleTokenObtainPairView(TokenObtainPairView):
+    serializer_class = SimpleTokenObtainPairSerializer
     permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = LoginRequestSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data["user"]
-
-        LoginOTP.objects.filter(user=user).delete()
-        otp = _generate_otp()
-        login_otp = LoginOTP.objects.create(user=user, otp=otp)
-
-        try:
-            _send_otp_email(user, otp)
-        except Exception:
-            login_otp.delete()
-            return Response(
-                {"detail": "Unable to send OTP email. Check SMTP configuration and try again."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        return Response(
-            {
-                "otp_required": True,
-                "user_id": user.id,
-                "email": user.email,
-                "message": "OTP sent to your email.",
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
-class VerifyOTPView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = VerifyOTPSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        user = serializer.validated_data["user"]
-        login_otp = serializer.validated_data["login_otp"]
-        login_otp.delete()
-
-        refresh = RefreshToken.for_user(user)
-        return Response(
-            {
-                "message": "OTP verified successfully.",
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-                "user": UserSerializer(user).data,
-            },
-            status=status.HTTP_200_OK,
-        )
 
 
 class MeView(APIView):
@@ -140,8 +103,7 @@ class MeView(APIView):
 
     def get(self, request):
         request.user.refresh_from_db()
-        _normalize_business_status(request.user)
-        _sync_with_kyc(request.user)
+        _sync_business_access_state(request.user)
         return Response(MeSerializer(request.user).data, status=status.HTTP_200_OK)
 
 
@@ -209,22 +171,20 @@ class BusinessStatusView(BusinessOnlyMixin, APIView):
             return forbidden
 
         request.user.refresh_from_db(fields=["business_status", "kyc_status"])
-        payment = getattr(request.user, "business_payment", None)
-        kyc = getattr(request.user, "business_kyc", None)
-        current_status = _normalize_business_status(request.user)
-        synced_kyc = _sync_with_kyc(request.user)
-        if synced_kyc:
-            kyc = synced_kyc
-        if current_status == "UNDER_REVIEW" and kyc is None:
-            current_status = "KYC_PENDING"
-            request.user.business_status = current_status
-            request.user.save(update_fields=["business_status"])
+        payment, kyc, current_status = _sync_business_access_state(request.user)
+        ensure_business_profile(request.user)
 
         return Response(
             {
                 "business_status": current_status,
                 "kyc_status": request.user.kyc_status,
-                "payment": {"is_verified": bool(getattr(payment, "is_verified", False))} if payment else None,
+                "payment_status": "approved" if payment else "pending",
+                "payment": {
+                    "is_verified": bool(getattr(payment, "is_verified", False)),
+                    "status": "approved",
+                }
+                if payment
+                else {"is_verified": False, "status": "pending"},
                 "kyc": {
                     "is_approved": bool(getattr(kyc, "is_approved", False)),
                     "rejection_reason": getattr(kyc, "rejection_reason", "") if kyc else "",
@@ -245,9 +205,7 @@ class BusinessProfileView(BusinessOnlyMixin, APIView):
         if forbidden:
             return forbidden
 
-        profile = BusinessProfile.objects.filter(user=request.user).first()
-        if not profile:
-            return Response({"detail": "Business profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        profile, _ = ensure_business_profile(request.user)
         return Response(BusinessProfileSerializer(profile).data, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -255,23 +213,18 @@ class BusinessProfileView(BusinessOnlyMixin, APIView):
         if forbidden:
             return forbidden
 
-        if BusinessProfile.objects.filter(user=request.user).exists():
-            return Response({"detail": "Business profile already exists."}, status=status.HTTP_409_CONFLICT)
-
-        serializer = BusinessProfileSerializer(data=request.data, context={"request": request})
+        profile, created = ensure_business_profile(request.user)
+        serializer = BusinessProfileSerializer(profile, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         profile = serializer.save()
-        return Response(BusinessProfileSerializer(profile).data, status=status.HTTP_201_CREATED)
+        return Response(BusinessProfileSerializer(profile).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
     def patch(self, request):
         forbidden = self._ensure_business(request)
         if forbidden:
             return forbidden
 
-        profile = BusinessProfile.objects.filter(user=request.user).first()
-        if not profile:
-            return Response({"detail": "Business profile not found."}, status=status.HTTP_404_NOT_FOUND)
-
+        profile, _ = ensure_business_profile(request.user)
         serializer = BusinessProfileSerializer(
             profile,
             data=request.data,

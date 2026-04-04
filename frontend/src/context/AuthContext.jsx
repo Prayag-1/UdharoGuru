@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
 
 import { clearTokens, setTokens } from "../api/apiClient";
-import { getMe, login as loginApi, register as registerApi, verifyOtp as verifyOtpApi } from "../api/auth";
+import { getMe, login as loginApi, register as registerApi } from "../api/auth";
 
 const AuthContext = createContext(null);
 
@@ -103,23 +103,11 @@ export function AuthProvider({ children }) {
     async ({ email, password }) => {
       try {
         const { data } = await loginApi({ email, password });
-        return data;
-      } catch (err) {
-        throw buildError(err, "Unable to login.");
-      }
-    },
-    []
-  );
-
-  const verifyOtp = useCallback(
-    async ({ user_id, otp }) => {
-      try {
-        const { data } = await verifyOtpApi({ user_id, otp });
         setTokens(data.access, data.refresh);
         const profile = await loadUser();
         return profile;
       } catch (err) {
-        throw buildError(err, "Unable to verify OTP.");
+        throw buildError(err, "Unable to login.");
       }
     },
     [loadUser]
@@ -162,7 +150,6 @@ export function AuthProvider({ children }) {
       user,
       loading,
       login,
-      verifyOtp,
       register,
       logout,
       refreshUser: loadUser,
@@ -172,7 +159,6 @@ export function AuthProvider({ children }) {
       user,
       loading,
       login,
-      verifyOtp,
       register,
       logout,
       loadUser,

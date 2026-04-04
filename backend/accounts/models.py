@@ -195,20 +195,32 @@ class BusinessProfile(models.Model):
         return f"{self.business_name} ({self.user.email})"
 
 
-class LoginOTP(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="login_otps")
-    otp = models.CharField(max_length=6)
-    created_at = models.DateTimeField(auto_now_add=True)
+def build_business_profile_defaults(user):
+    full_name = (getattr(user, "full_name", "") or "").strip()
+    email = (getattr(user, "email", "") or "").strip()
+    business_name = full_name or email or f"Business {getattr(user, 'id', '')}"
+    return {
+        "business_name": business_name,
+        "owner_name": full_name or business_name,
+        "phone": "",
+        "email": email,
+        "address": "",
+        "business_type": "",
+        "pan_vat_number": "",
+    }
 
-    class Meta:
-        ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["user", "created_at"]),
-        ]
 
-    def is_expired(self):
-        expiry_minutes = getattr(settings, "OTP_EXPIRY_MINUTES", 5)
-        return timezone.now() > self.created_at + timezone.timedelta(minutes=expiry_minutes)
-
-    def __str__(self):
-        return f"OTP for {self.user.email}"
+def ensure_business_profile(user):
+    profile, created = BusinessProfile.objects.get_or_create(
+        user=user,
+        defaults=build_business_profile_defaults(user),
+    )
+    changed_fields = []
+    defaults = build_business_profile_defaults(user)
+    for field, value in defaults.items():
+        if not getattr(profile, field, None) and value:
+            setattr(profile, field, value)
+            changed_fields.append(field)
+    if changed_fields:
+        profile.save(update_fields=changed_fields + ["updated_at"])
+    return profile, created

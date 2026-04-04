@@ -8,7 +8,7 @@ import tempfile
 import os
 
 from accounts.permissions import IsBusinessAccount
-from accounts.models import BusinessProfile
+from accounts.models import ensure_business_profile
 
 from .models import BusinessTransaction, OCRDocument, OCRScan
 from .serializers import OCRConfirmSerializer, OCRDocumentSerializer
@@ -289,13 +289,7 @@ class CreditSaleOCRProcessView(APIView):
                 status=400
             )
 
-        # Get business profile
-        profile = BusinessProfile.objects.filter(user=request.user).first()
-        if not profile:
-            return Response(
-                {"detail": "Business profile not found. Please complete your profile setup first."},
-                status=404
-            )
+        ensure_business_profile(request.user)
 
         temp_path = None
         try:

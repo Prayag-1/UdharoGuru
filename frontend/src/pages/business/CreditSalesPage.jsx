@@ -57,8 +57,9 @@ export default function CreditSalesPage() {
   };
 
   useEffect(() => {
+    if (!user || user.account_type !== "BUSINESS") return;
     loadData();
-  }, []);
+  }, [user?.id]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "28px 24px", fontFamily: "Inter, system-ui" }}>

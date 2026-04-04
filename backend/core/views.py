@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import NotFound, ValidationError as DRFValidationError
-from accounts.models import BusinessProfile
+from accounts.models import ensure_business_profile
 from accounts.permissions import IsBusinessUser
 from notifications.services import create_settlement_notification
 from .models import Customer, Transaction, Product, CreditSale, CreditSaleItem, Payment
@@ -19,15 +19,17 @@ from .serializers import CustomerSerializer, TransactionSerializer, ProductSeria
 
 User = get_user_model()
 
+
+def get_business_profile_for_user(user):
+    profile, _ = ensure_business_profile(user)
+    return profile
+
 class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def _get_business(self):
-        profile = BusinessProfile.objects.filter(user=self.request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
-        return profile
+        return get_business_profile_for_user(self.request.user)
 
     def get_queryset(self):
         profile = self._get_business()
@@ -137,10 +139,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def _get_business(self):
-        profile = BusinessProfile.objects.filter(user=self.request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
-        return profile
+        return get_business_profile_for_user(self.request.user)
 
     def get_queryset(self):
         """
@@ -259,10 +258,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def _get_business(self):
-        profile = BusinessProfile.objects.filter(user=self.request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
-        return profile
+        return get_business_profile_for_user(self.request.user)
 
     def get_queryset(self):
         profile = self._get_business()
@@ -278,10 +274,7 @@ class CreditSaleViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def _get_business(self):
-        profile = BusinessProfile.objects.filter(user=self.request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
-        return profile
+        return get_business_profile_for_user(self.request.user)
 
     def get_queryset(self):
         profile = self._get_business()
@@ -477,10 +470,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def _get_business(self):
-        profile = BusinessProfile.objects.filter(user=self.request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
-        return profile
+        return get_business_profile_for_user(self.request.user)
 
     def get_queryset(self):
         profile = self._get_business()
@@ -562,9 +552,7 @@ class TotalOutstandingView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def get(self, request):
-        profile = BusinessProfile.objects.filter(user=request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
+        profile = get_business_profile_for_user(request.user)
         customers = Customer.objects.filter(business=profile)
 
         credit = Transaction.objects.filter(
@@ -586,9 +574,7 @@ class TopDebtorsView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def get(self, request):
-        profile = BusinessProfile.objects.filter(user=request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
+        profile = get_business_profile_for_user(request.user)
         customers = Customer.objects.filter(business=profile)
 
         data = []
@@ -618,9 +604,7 @@ class MonthlySummaryView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def get(self, request):
-        profile = BusinessProfile.objects.filter(user=request.user).first()
-        if not profile:
-            raise NotFound("Business profile not found.")
+        profile = get_business_profile_for_user(request.user)
         qs = Transaction.objects.filter(customer__business=profile).annotate(
             month=TruncMonth("created_at")
         ).values("month", "transaction_type").annotate(
@@ -635,26 +619,18 @@ class BusinessDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsBusinessUser]
 
     def get(self, request):
-        profile = BusinessProfile.objects.filter(user=request.user).first()
-        
-        # If no profile exists, return empty dashboard data
-        if not profile:
-            return Response({
-                "metrics": {
-                    "total_sales": 0,
-                    "outstanding_credit": 0,
-                    "payments_collected": 0,
-                    "total_customers": 0,
-                },
-                "sales_by_status": {
-                    "pending": 0,
-                    "partial": 0,
-                    "paid": 0,
-                },
-                "recent_credit_sales": [],
-                "recent_payments": [],
-                "message": "Complete your business profile to start tracking sales and payments.",
-            })
+        profile = get_business_profile_for_user(request.user)
+        profile_incomplete = not all(
+            [
+                profile.business_name,
+                profile.owner_name,
+                profile.phone,
+                profile.email,
+                profile.address,
+                profile.business_type,
+                profile.pan_vat_number,
+            ]
+        )
         
         # Total sales
         total_sales = CreditSale.objects.filter(
@@ -739,4 +715,5 @@ class BusinessDashboardView(APIView):
             },
             "recent_credit_sales": recent_sales_data,
             "recent_payments": recent_payments_data,
+            "message": "Complete your business profile to unlock invoices and richer business details." if profile_incomplete else "",
         })

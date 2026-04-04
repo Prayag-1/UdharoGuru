@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 import { getDashboardData } from "../../api/dashboard";
@@ -105,7 +105,6 @@ export default function BusinessDashboard() {
   
   // Track in-flight request to prevent duplicates
   const requestAbortRef = useRef(null);
-  const hasLoadedRef = useRef(false);
 
   // Compute chart data from real sales data
   const { monthlyTrend, topCustomers, topProducts } = useMemo(() => {
@@ -137,13 +136,6 @@ export default function BusinessDashboard() {
       return;
     }
 
-    // Only load once per user session
-    if (hasLoadedRef.current) {
-      return;
-    }
-
-    hasLoadedRef.current = true;
-
     // Cancel any in-flight requests
     if (requestAbortRef.current) {
       requestAbortRef.current.abort();
@@ -174,6 +166,23 @@ export default function BusinessDashboard() {
       } catch (err) {
         // Ignore if request was aborted
         if (err.name === "AbortError") return;
+        setDashboard({
+          metrics: {
+            total_sales: 0,
+            outstanding_credit: 0,
+            payments_collected: 0,
+            total_customers: 0,
+          },
+          sales_by_status: {
+            pending: 0,
+            partial: 0,
+            paid: 0,
+          },
+          recent_credit_sales: [],
+          recent_payments: [],
+          message: "",
+        });
+        setAllSales([]);
         setError("Failed to load dashboard data");
       } finally {
         setLoading(false);
@@ -188,7 +197,7 @@ export default function BusinessDashboard() {
         abortController.abort();
       }
     };
-  }, [user?.id, navigate]);  // Only re-run if user.id changes
+  }, [user?.id, navigate]);
 
   if (loading) {
     return (

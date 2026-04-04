@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import "./Signup.css";
-import { useAuth } from "../../context/AuthContext";
+import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 
 const features = [
   {
@@ -42,20 +42,8 @@ export default function Login() {
     setStatus("");
     setSubmitting(true);
     try {
-      const result = await login(form);
-      if (result?.otp_required) {
-        sessionStorage.setItem(
-          "pending_otp_login",
-          JSON.stringify({ userId: result.user_id, email: result.email || form.email })
-        );
-        navigate("/auth/verify-otp", { replace: true });
-        return;
-      }
-      if (result?.access && result?.refresh) {
-        navigate("/auth/login", { replace: true });
-        return;
-      }
-      setError("Unexpected login response.");
+      const profile = await login(form);
+      navigate(resolveHomeRoute(profile), { replace: true });
     } catch (err) {
       const message = err.message || "Login failed.";
       setError(message);

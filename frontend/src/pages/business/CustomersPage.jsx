@@ -43,8 +43,9 @@ export default function CustomersPage() {
   };
 
   useEffect(() => {
+    if (!user || user.account_type !== "BUSINESS") return;
     loadCustomers();
-  }, []);
+  }, [user?.id]);
 
   const openCreate = () => {
     setEditing(null);

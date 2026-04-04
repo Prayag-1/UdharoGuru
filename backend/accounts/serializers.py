@@ -2,8 +2,9 @@ from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import BusinessKYC, BusinessPayment, BusinessProfile, LoginOTP, User
+from .models import BusinessKYC, BusinessPayment, BusinessProfile, User, ensure_business_profile
 
 
 class ConflictError(APIException):
@@ -72,49 +73,34 @@ class MeSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class LoginRequestSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    password = serializers.CharField()
-
+class SimpleTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        email = attrs.get("email")
+        # Accept both 'email' and 'username' fields
+        email = attrs.get("email") or attrs.get(self.username_field) or attrs.get("username")
         password = attrs.get("password")
-
+        
+        if not email:
+            raise serializers.ValidationError({"detail": "Email or username is required."})
+        if not password:
+            raise serializers.ValidationError({"detail": "Password is required."})
+        
         user_lookup = User.objects.filter(email=email).first()
         if not user_lookup:
             raise serializers.ValidationError({"detail": "User not found."})
         if not user_lookup.is_active:
             raise serializers.ValidationError({"detail": "This account is inactive."})
 
+        # Use our custom EmailBackend which accepts email parameter
         user = authenticate(self.context.get("request"), email=email, password=password)
         if not user:
             raise serializers.ValidationError({"detail": "Invalid credentials."})
 
-        attrs["user"] = user
-        return attrs
-
-
-class VerifyOTPSerializer(serializers.Serializer):
-    user_id = serializers.IntegerField()
-    otp = serializers.RegexField(r"^\d{6}$", max_length=6, min_length=6)
-
-    def validate(self, attrs):
-        user = User.objects.filter(id=attrs["user_id"]).first()
-        if not user:
-            raise serializers.ValidationError({"detail": "User not found."})
-
-        login_otp = LoginOTP.objects.filter(user=user).order_by("-created_at").first()
-        if not login_otp:
-            raise serializers.ValidationError({"detail": "OTP not found. Please login again."})
-        if login_otp.is_expired():
-            login_otp.delete()
-            raise serializers.ValidationError({"detail": "OTP expired. Please login again."})
-        if login_otp.otp != attrs["otp"]:
-            raise serializers.ValidationError({"detail": "Invalid OTP."})
-
-        attrs["user"] = user
-        attrs["login_otp"] = login_otp
-        return attrs
+        self.user = user
+        refresh = self.get_token(user)
+        return {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
 
 
 class BusinessPaymentSerializer(serializers.ModelSerializer):
@@ -211,6 +197,8 @@ class BusinessKYCSerializer(serializers.ModelSerializer):
 class BusinessProfileSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(read_only=True)
     logo = serializers.ImageField(required=False, allow_null=True)
+    kyc_status = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessProfile
@@ -226,10 +214,17 @@ class BusinessProfileSerializer(serializers.ModelSerializer):
             "logo",
             "pan_vat_number",
             "kyc_status",
+            "payment_status",
             "created_at",
             "updated_at",
         )
         read_only_fields = ("id", "user", "kyc_status", "created_at", "updated_at")
+
+    def get_kyc_status(self, obj):
+        return getattr(obj.user, "kyc_status", obj.kyc_status)
+
+    def get_payment_status(self, obj):
+        return "approved" if hasattr(obj.user, "business_payment") else "pending"
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -243,6 +238,8 @@ class BusinessProfileSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         if not user:
             raise serializers.ValidationError("Authentication required.")
-        if BusinessProfile.objects.filter(user=user).exists():
-            raise serializers.ValidationError("Business profile already exists.")
-        return BusinessProfile.objects.create(user=user, **validated_data)
+        profile, _ = ensure_business_profile(user)
+        for key, value in validated_data.items():
+            setattr(profile, key, value)
+        profile.save()
+        return profile

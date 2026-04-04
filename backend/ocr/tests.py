@@ -63,8 +63,7 @@ class BusinessOCRTests(TestCase):
         self.unapproved_user.business_status = "KYC_PENDING"
         self.unapproved_user.save(update_fields=["kyc_status", "business_status"])
 
-        BusinessProfile.objects.create(
-            user=self.approved_user,
+        BusinessProfile.objects.filter(user=self.approved_user).update(
             business_name="Biz Store",
             owner_name="Biz",
             phone="9800000000",

@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import is_password_usable
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 from django.utils.html import format_html
 
@@ -44,7 +45,15 @@ class BusinessPaymentAdmin(admin.ModelAdmin):
   screenshot_preview.short_description = "Screenshot"
 
   def mark_payment_verified(self, request, queryset):
-    updated = queryset.update(is_verified=True)
+    updated = 0
+    with transaction.atomic():
+      for payment in queryset.select_related("user").select_for_update():
+        payment.is_verified = True
+        payment.save(update_fields=["is_verified", "updated_at"])
+        if payment.user.business_status == "PAYMENT_PENDING":
+          payment.user.business_status = "KYC_PENDING"
+          payment.user.save(update_fields=["business_status"])
+        updated += 1
     self.message_user(request, f"Marked {updated} payment(s) as verified.")
   mark_payment_verified.short_description = "Mark Payment Verified"
 
@@ -151,3 +160,6 @@ class BusinessProfileAdmin(admin.ModelAdmin):
   list_filter = ("kyc_status",)
   search_fields = ("business_name", "owner_name", "email", "phone", "pan_vat_number", "user__email")
   readonly_fields = ("created_at", "updated_at")
+
+  def get_queryset(self, request) -> QuerySet:
+    return super().get_queryset(request).select_related("user")

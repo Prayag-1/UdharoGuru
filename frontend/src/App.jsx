@@ -4,7 +4,6 @@ import "./App.css";
 import { AuthProvider } from "./context/AuthContext";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
-import VerifyOtp from "./pages/auth/VerifyOtp";
 import VerifyEmail from "./pages/auth/VerifyEmail";
 import BusinessLayout from "./pages/business/BusinessLayout";
 import BusinessDashboard from "./pages/business/BusinessDashboard";
@@ -23,6 +22,8 @@ import PendingVerification from "./pages/business/PendingVerification";
 import Rejected from "./pages/business/Rejected";
 import OcrList from "./pages/business/OcrList";
 import OcrDetail from "./pages/business/OcrDetail";
+import PaymentSuccess from "./pages/business/PaymentSuccess";
+import PaymentCancel from "./pages/business/PaymentCancel";
 import PrivateLayout from "./pages/private/PrivateLayout";
 import DashboardView from "./pages/private/DashboardView";
 import ExpensesView from "./pages/private/ExpensesView";
@@ -38,7 +39,6 @@ function App() {
           <Route path="/" element={<Navigate to="/auth/login" replace />} />
 
           <Route path="/auth/login" element={<Login />} />
-          <Route path="/auth/verify-otp" element={<VerifyOtp />} />
           <Route path="/auth/signup" element={<Signup />} />
           <Route path="/auth/verify-email" element={<VerifyEmail />} />
 
@@ -62,6 +62,9 @@ function App() {
             <Route path="ocr/:id" element={<OcrDetail />} />
             <Route path="*" element={<Navigate to="/business/dashboard" replace />} />
           </Route>
+
+          <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-cancel" element={<PaymentCancel />} />
 
           <Route path="/private" element={<Navigate to="/private/dashboard" replace />} />
           <Route path="/private/*" element={<PrivateLayout />}>
