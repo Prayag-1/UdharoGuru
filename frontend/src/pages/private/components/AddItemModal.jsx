@@ -4,7 +4,14 @@ import "../../private/PrivateDashboard.css";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export default function AddItemModal({ open, onClose, onSubmit, connections = [], submitting }) {
+export default function AddItemModal({
+  open,
+  onClose,
+  onSubmit,
+  connections = [],
+  submitting,
+  initialBorrowerId = "",
+}) {
   const [borrower, setBorrower] = useState("");
   const [itemName, setItemName] = useState("");
   const [itemDescription, setItemDescription] = useState("");
@@ -15,7 +22,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
 
   useEffect(() => {
     if (open) {
-      setBorrower("");
+      setBorrower(initialBorrowerId ? String(initialBorrowerId) : "");
       setItemName("");
       setItemDescription("");
       setExpectedReturnDate("");
@@ -23,7 +30,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
       setReminderInterval(3);
       setError(null);
     }
-  }, [open]);
+  }, [open, initialBorrowerId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

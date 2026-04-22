@@ -339,6 +339,12 @@
   gap: 14px;
 }
 
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .summary-card {
   background: var(--surface-muted);
   border: 1px solid var(--border);
@@ -388,6 +394,10 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.compact-stack {
+  gap: 12px;
 }
 
 .split-layout {
@@ -567,6 +577,12 @@
   justify-content: flex-end;
 }
 
+.simple-row,
+.detail-row,
+.activity-row {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) auto;
+}
+
 .item-card-actions {
   margin-top: 10px;
   display: flex;
@@ -597,6 +613,12 @@
   gap: 6px;
   min-width: 0;
   flex: 1 1 70%;
+}
+
+.group-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .group-title {
@@ -975,6 +997,223 @@
   align-self: flex-end;
 }
 
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.friends-header {
+  align-items: flex-start;
+}
+
+.friends-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.search-input {
+  min-width: 220px;
+}
+
+.friend-entry-panel {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.friend-entry-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.success-pill {
+  margin-top: 12px;
+  background: #e3f6ed;
+  color: #1f7655;
+}
+
+.private-friends-shell {
+  position: relative;
+}
+
+.friends-split-layout {
+  align-items: start;
+}
+
+.friend-card {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 14px 16px;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.friend-card:hover {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.friend-card.selected {
+  border-color: var(--border-strong);
+  background: linear-gradient(180deg, rgba(79, 124, 248, 0.08), rgba(79, 124, 248, 0.02));
+  box-shadow: 0 14px 26px rgba(37, 99, 235, 0.12);
+}
+
+.friend-card-main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.friend-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 900;
+  flex: 0 0 auto;
+}
+
+.friend-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.friend-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.friend-name {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.friend-subtitle {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.friend-balance-tone {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.friend-balance-tone.positive {
+  color: #0b7a34;
+}
+
+.friend-balance-tone.negative {
+  color: #b91c1c;
+}
+
+.friend-balance-tone.neutral {
+  color: var(--muted);
+}
+
+.friend-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.friend-detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.friend-balance-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.nested-card {
+  padding: 16px;
+  background: var(--surface-muted);
+}
+
+.private-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 22px;
+  z-index: 30;
+  min-width: 110px;
+}
+
+.private-fab-menu {
+  position: fixed;
+  right: 20px;
+  bottom: 78px;
+  z-index: 29;
+  display: grid;
+  gap: 8px;
+  width: min(260px, calc(100vw - 32px));
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+}
+
+.insight-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.account-field {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-field:last-child {
+  border-bottom: 0;
+}
+
+.invite-code-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(79, 124, 248, 0.06), rgba(79, 124, 248, 0.01));
+}
+
+.invite-code-value {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
 @keyframes shimmer {
   0% {
     background-position: -200% 0;
@@ -997,6 +1236,11 @@
   .split-layout {
     grid-template-columns: 1fr;
   }
+  .grid-2,
+  .friend-entry-panel,
+  .friend-balance-summary {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 800px) {
@@ -1004,16 +1248,34 @@
     grid-template-columns: 1fr;
   }
   .sidebar {
-    position: relative;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 20;
     height: auto;
-    grid-row: 2;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -12px 24px rgba(15, 23, 42, 0.08);
+  }
+  .sidebar-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .nav-link {
+    text-align: center;
+    padding: 10px 8px;
+    font-size: 13px;
   }
   .top-bar {
     position: sticky;
     top: 0;
   }
   .main-content {
-    padding: 18px 16px;
+    padding: 18px 16px 108px;
   }
   .row-card {
     grid-template-columns: 1fr;
@@ -1037,6 +1299,23 @@
   .group-right {
     width: 100%;
     align-items: flex-start;
+  }
+  .friends-toolbar,
+  .friend-detail-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .friend-name-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .private-fab {
+    right: 16px;
+    bottom: 90px;
+  }
+  .private-fab-menu {
+    right: 16px;
+    bottom: 146px;
   }
   .bar-row {
     grid-template-columns: 1fr;

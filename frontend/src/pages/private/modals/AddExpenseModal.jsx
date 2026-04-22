@@ -7,6 +7,18 @@ const today = () => new Date().toISOString().slice(0, 10);
 const formatCurrency = (value) =>
   Number(value || 0).toLocaleString("ne-NP", { style: "currency", currency: "NPR", minimumFractionDigits: 2 });
 
+const calcPercent = (amount, total) => {
+  if (!total) return 0;
+  return Math.max(0, (Number(amount) / Number(total)) * 100);
+};
+
+const recalcPercents = (splitArr, total) =>
+  splitArr.map((split) => ({
+    ...split,
+    amount: Number(split.amount || 0),
+    percent: calcPercent(split.amount || 0, total),
+  }));
+
 export default function AddExpenseModal({
   open,
   onClose,
@@ -16,6 +28,7 @@ export default function AddExpenseModal({
   defaultSplit = 50,
   onSaveDefaultSplit,
   prefill,
+  initialConnectionIds = [],
 }) {
   const [description, setDescription] = useState("");
   const [totalAmount, setTotalAmount] = useState("");
@@ -37,26 +50,17 @@ export default function AddExpenseModal({
     [connections]
   );
 
-  const calcPercent = (amount, total) => {
-    if (!total) return 0;
-    return Math.max(0, (Number(amount) / Number(total)) * 100);
-  };
-
-  const recalcPercents = (splitArr, total) =>
-    splitArr.map((s) => ({
-      ...s,
-      amount: Number(s.amount || 0),
-      percent: calcPercent(s.amount || 0, total),
-    }));
-
   useEffect(() => {
     if (!open) return;
-    const ids = connections.slice(0, 1).map((c) => c.id);
+    const preferredIds = initialConnectionIds.filter((id) =>
+      connections.some((conn) => String(conn.id) === String(id))
+    );
+    const ids = preferredIds.length ? preferredIds : connections.slice(0, 1).map((c) => c.id);
     const initialSplits = ids.length
       ? [{ id: ids[0], amount: totalAmount ? Number(totalAmount) * (defaultSplit / 100) : 0 }]
       : [];
     setSplits(recalcPercents(initialSplits, totalAmount));
-  }, [open, connections, defaultSplit, totalAmount]);
+  }, [open, connections, defaultSplit, totalAmount, initialConnectionIds]);
 
   useEffect(() => {
     if (!prefill || !open) return;

@@ -1,55 +1,65 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
 import {
+  addPrivateFriendByEmail,
   addPrivateFriendByInviteCode,
-  getOrCreateDirectThread,
   getPrivateConnections,
+  getPrivateItemReminders,
+  getPrivateItems,
+  getPrivateSummary,
   getPrivateTransactions,
-  getThreadMessages,
-  sendThreadMessage,
 } from "../../api/private";
-import ChatPanel from "./components/ChatPanel";
+import FriendCard from "./components/FriendCard";
+import {
+  connectionDisplayName,
+  formatCurrency,
+  getConnectionBalanceMap,
+  getConnectionTransactionMap,
+  normalizeConnection,
+} from "./privateShared";
 import "./PrivateDashboard.css";
 
-const formatCurrency = (value) =>
-  Number(value || 0).toLocaleString("ne-NP", { style: "currency", currency: "NPR", minimumFractionDigits: 2 });
-
-const formatDate = (value) => {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-};
-
-const normalizeConnection = (conn) => {
-  const target = conn.connected_user || {};
-  return {
-    id: conn.connected_user_id || target.id || conn.id,
-    email: conn.connected_user_email || target.email || conn.email,
-    full_name: target.full_name || conn.full_name,
-  };
-};
-
+/**
+ * FriendsView - CLEAN FRIENDS LIST
+ * Shows: summary cards, add friends, friend list (clickable to detail)
+ * Removes: friend detail panel, chat, expense modals, settle UI
+ * Those move to FriendDetailView which is accessible via /private/friends/:id
+ */
 export default function FriendsView() {
-  const { connections, setConnections, user } = useOutletContext();
+  const { connections, setConnections } = useOutletContext();
+
+  const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [items, setItems] = useState([]);
+  const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedFriend, setSelectedFriend] = useState(null);
-  const [chatThread, setChatThread] = useState(null);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatInput, setChatInput] = useState("");
-  const [chatSending, setChatSending] = useState(false);
-  const [chatError, setChatError] = useState(null);
-  const pollRef = useRef(null);
-  const [inviteCode, setInviteCode] = useState("");
-  const [inviteError, setInviteError] = useState(null);
-  const [inviteSaving, setInviteSaving] = useState(false);
-  const [inviteSuccess, setInviteSuccess] = useState(false);
 
-  const normalizedConnections = useMemo(() => connections.map(normalizeConnection), [connections]);
+  const [searchValue, setSearchValue] = useState("");
+  const [sortMode, setSortMode] = useState("balance");
+  const [showAddFriend, setShowAddFriend] = useState(false);
+
+  const [inviteCodeInput, setInviteCodeInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [friendActionError, setFriendActionError] = useState(null);
+  const [friendActionSuccess, setFriendActionSuccess] = useState("");
+
+  // Load friends data on mount
+  const loadFriendsData = async () => {
+    const [summaryRes, txRes, itemsRes, remindersRes] = await Promise.all([
+      getPrivateSummary(),
+      getPrivateTransactions(),
+      getPrivateItems(),
+      getPrivateItemReminders(),
+    ]);
+    setSummary(summaryRes.data);
+    setTransactions(Array.isArray(txRes.data) ? txRes.data : txRes.data?.results || []);
+    setItems(Array.isArray(itemsRes.data) ? itemsRes.data : itemsRes.data?.results || []);
+    setReminders(Array.isArray(remindersRes.data) ? remindersRes.data : remindersRes.data?.results || []);
+  };
 
   useEffect(() => {
     let active = true;
@@ -57,14 +67,15 @@ export default function FriendsView() {
       setLoading(true);
       setError(null);
       try {
-        const { data } = await getPrivateTransactions();
-        if (!active) return;
-        setTransactions(Array.isArray(data) ? data : data?.results || []);
+        await loadFriendsData();
       } catch (err) {
-        console.error("Failed to load friend data", err);
+        console.error("Failed to load friends view", err);
         if (!active) return;
+        setSummary(null);
         setTransactions([]);
-        setError("Unable to load expenses.");
+        setItems([]);
+        setReminders([]);
+        setError("Unable to load your private friend balances.");
       } finally {
         if (active) setLoading(false);
       }
@@ -75,271 +86,264 @@ export default function FriendsView() {
     };
   }, []);
 
-  const balances = useMemo(() => {
-    const map = {};
-    transactions.forEach((tx) => {
-      const key = (tx.person_name || "").toLowerCase();
-      const amount = Number(tx.amount || 0);
-      const delta = tx.transaction_type === "LENT" ? amount : -amount;
-      map[key] = (map[key] || 0) + delta;
-    });
-    const byId = {};
-    normalizedConnections.forEach((conn) => {
-      const key = (conn.email || conn.full_name || `user-${conn.id}`).toLowerCase();
-      byId[conn.id] = map[key] || 0;
-    });
-    return byId;
-  }, [normalizedConnections, transactions]);
-
-  const filteredTx = useMemo(() => {
-    if (!selectedFriend) return [];
-    const conn = normalizedConnections.find((c) => String(c.id) === String(selectedFriend));
-    if (!conn) return [];
-    const label = (conn.email || conn.full_name || "").toLowerCase();
-    return transactions.filter((tx) => (tx.person_name || "").toLowerCase() === label);
-  }, [normalizedConnections, selectedFriend, transactions]);
-
-  const loadChat = async (friendId) => {
-    if (!friendId) return;
-    setChatLoading(true);
-    setChatError(null);
-    setChatInput("");
-    if (pollRef.current) clearInterval(pollRef.current);
-    setChatThread(null);
-    setChatMessages([]);
-    try {
-      const { data: thread } = await getOrCreateDirectThread({ user_id: friendId });
-      setChatThread(thread);
-      const { data: msgs } = await getThreadMessages(thread.id);
-      setChatMessages(msgs);
-    } catch (err) {
-      console.error("Failed to load chat", err);
-      setChatThread(null);
-      setChatMessages([]);
-      setChatError("Unable to load chat right now.");
-    } finally {
-      setChatLoading(false);
-    }
-  };
-
+  // Clear success message after delay
   useEffect(() => {
-    if (!chatThread?.id) return;
-    let cancelled = false;
-    let polling = false;
-    const run = async () => {
-      if (polling || document.visibilityState !== "visible") return;
-      polling = true;
-      try {
-        const { data } = await getThreadMessages(chatThread.id);
-        if (!cancelled) {
-          setChatMessages(data);
-        }
-      } catch (err) {
-        console.error("Failed to poll chat", err);
-      } finally {
-        polling = false;
-      }
-    };
+    if (!friendActionSuccess) return;
+    const timer = setTimeout(() => setFriendActionSuccess(""), 2200);
+    return () => clearTimeout(timer);
+  }, [friendActionSuccess]);
 
-    run();
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        run();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    pollRef.current = setInterval(run, 15000);
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [chatThread?.id]);
-
-  const handleSend = async (e) => {
-    e?.preventDefault?.();
-    if (!chatThread?.id || !chatInput.trim()) return;
-    setChatSending(true);
-    setChatError(null);
-    try {
-      await sendThreadMessage(chatThread.id, { message: chatInput.trim() });
-      setChatInput("");
-      const { data } = await getThreadMessages(chatThread.id);
-      setChatMessages(data);
-    } catch (err) {
-      console.error("Failed to send message", err);
-      setChatError("Unable to send message.");
-    } finally {
-      setChatSending(false);
-    }
-  };
-
-  const activeFriend = useMemo(
-    () => normalizedConnections.find((c) => String(c.id) === String(selectedFriend)),
-    [normalizedConnections, selectedFriend]
+  // Compute friend rows with balances and metadata
+  const normalizedConnections = useMemo(
+    () => connections.map(normalizeConnection),
+    [connections]
+  );
+  const balances = useMemo(
+    () => getConnectionBalanceMap(normalizedConnections, transactions),
+    [normalizedConnections, transactions]
+  );
+  const transactionMap = useMemo(
+    () => getConnectionTransactionMap(normalizedConnections, transactions),
+    [normalizedConnections, transactions]
   );
 
-  const handleClearSelection = () => {
-    setSelectedFriend(null);
-    setChatThread(null);
-    setChatMessages([]);
-    setChatInput("");
-    setChatError(null);
-    if (pollRef.current) clearInterval(pollRef.current);
+  const friendRows = useMemo(() => {
+    const query = searchValue.trim().toLowerCase();
+
+    const rows = normalizedConnections.map((conn) => {
+      const friendTransactions = [...(transactionMap[conn.id] || [])].sort(
+        (a, b) => new Date(b.transaction_date || 0).getTime() - new Date(a.transaction_date || 0).getTime()
+      );
+      const friendItems = items.filter((loan) => String(loan.borrower) === String(conn.id));
+      const activeItems = friendItems.filter((loan) => loan.status === "ACTIVE");
+      const returnedItems = friendItems.filter((loan) => loan.status === "RETURNED");
+      const dueReminders = reminders.filter((item) => String(item.borrower) === String(conn.id));
+      const balance = Number(balances[conn.id] || 0);
+
+      return {
+        ...conn,
+        balance,
+        friendTransactions,
+        friendItems,
+        activeItems,
+        returnedItems,
+        dueReminders,
+        latestActivity:
+          friendTransactions[0]?.transaction_date ||
+          friendItems[0]?.expected_return_date ||
+          conn.connected_at,
+      };
+    });
+
+    const filtered = rows.filter((row) => {
+      if (!query) return true;
+      const haystack = [row.full_name, row.email, row.invite_code].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+
+    filtered.sort((a, b) => {
+      if (sortMode === "recent") {
+        return new Date(b.latestActivity || 0).getTime() - new Date(a.latestActivity || 0).getTime();
+      }
+      return Math.abs(b.balance) - Math.abs(a.balance);
+    });
+
+    return filtered;
+  }, [balances, items, normalizedConnections, reminders, searchValue, sortMode, transactionMap]);
+
+  const owed = Number(summary?.total_receivable || 0);
+  const owes = Number(summary?.total_payable || 0);
+  const net = Number(summary?.net_balance || 0);
+
+  // Add friend handlers
+  const refreshConnections = async () => {
+    const { data } = await getPrivateConnections();
+    setConnections(Array.isArray(data) ? data : data?.results || []);
   };
 
-  const handleAddFriendByInvite = async (e) => {
-    e.preventDefault();
-    const code = inviteCode.trim().toUpperCase();
-    if (!code) return;
-    setInviteError(null);
-    setInviteSuccess(false);
+  const handleAddByInviteCode = async (event) => {
+    event.preventDefault();
+    const nextCode = inviteCodeInput.trim().toUpperCase();
+    if (!nextCode) return;
+
     setInviteSaving(true);
+    setFriendActionError(null);
+    setFriendActionSuccess("");
     try {
-      await addPrivateFriendByInviteCode({ invite_code: code });
-      const { data } = await getPrivateConnections();
-      setConnections(Array.isArray(data) ? data : data?.results || []);
-      setInviteCode("");
-      setInviteSuccess(true);
+      await addPrivateFriendByInviteCode({ invite_code: nextCode });
+      await refreshConnections();
+      setInviteCodeInput("");
+      setFriendActionSuccess("Friend added by invite code.");
     } catch (err) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.invite_code ||
-        "Unable to add friend.";
-      setInviteError(msg);
+      setFriendActionError(
+        err?.response?.data?.detail || err?.response?.data?.invite_code || "Unable to add friend by invite code."
+      );
     } finally {
       setInviteSaving(false);
     }
   };
 
-  useEffect(() => {
-    if (!inviteSuccess) return;
-    const timer = setTimeout(() => setInviteSuccess(false), 2000);
-    return () => clearTimeout(timer);
-  }, [inviteSuccess]);
+  const handleAddByEmail = async (event) => {
+    event.preventDefault();
+    const nextEmail = emailInput.trim();
+    if (!nextEmail) return;
+
+    setEmailSaving(true);
+    setFriendActionError(null);
+    setFriendActionSuccess("");
+    try {
+      await addPrivateFriendByEmail({ email: nextEmail });
+      await refreshConnections();
+      setEmailInput("");
+      setFriendActionSuccess("Friend invite sent by email.");
+    } catch (err) {
+      setFriendActionError(
+        err?.response?.data?.detail || err?.response?.data?.email || "Unable to add friend by email."
+      );
+    } finally {
+      setEmailSaving(false);
+    }
+  };
 
   return (
-    <div className="dashboard-shell">
-      <div className="section-heading" style={{ marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 900 }}>Friends</div>
-        </div>
-      </div>
-      <div className="split-layout">
-        <div className="stack">
-          <div className="section-card">
-            <div className="section-heading" style={{ marginBottom: 8 }}>
-              <div style={{ fontWeight: 700 }}>Add friend</div>
+    <div className="dashboard-shell private-friends-shell">
+      {/* Header */}
+      <div className="section-card">
+        <div className="section-heading friends-header">
+          <div>
+            <div style={{ fontSize: 24, fontWeight: 900 }}>Friends</div>
+            <div className="muted" style={{ fontSize: 14 }}>
+              Track balances, settle up, and manage item loans.
             </div>
-            <form
-              onSubmit={handleAddFriendByInvite}
-              style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+          </div>
+          <div className="friends-toolbar">
+            <input
+              className="input search-input"
+              placeholder="Search friends"
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+            />
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => setSortMode((prev) => (prev === "balance" ? "recent" : "balance"))}
             >
+              Sort: {sortMode === "balance" ? "Balance" : "Recent"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={() => setShowAddFriend((prev) => !prev)}
+            >
+              {showAddFriend ? "Close" : "Add friends"}
+            </button>
+          </div>
+        </div>
+
+        {/* Summary cards */}
+        <div className="grid-3">
+          <div className="summary-card">
+            <div className="card-title">You are owed</div>
+            <div className="currency positive" style={{ marginTop: 6 }}>
+              {formatCurrency(owed)}
+            </div>
+          </div>
+          <div className="summary-card">
+            <div className="card-title">You owe</div>
+            <div className="currency negative" style={{ marginTop: 6 }}>
+              {formatCurrency(owes)}
+            </div>
+          </div>
+          <div className="summary-card">
+            <div className="card-title">Net position</div>
+            <div
+              className={`currency ${
+                net > 0 ? "positive" : net < 0 ? "negative" : "primary"
+              }`}
+              style={{ marginTop: 6 }}
+            >
+              {formatCurrency(net)}
+            </div>
+          </div>
+        </div>
+
+        {/* Add friend panel */}
+        {showAddFriend && (
+          <div className="friend-entry-panel">
+            <form className="friend-entry-form" onSubmit={handleAddByInviteCode}>
+              <div style={{ fontWeight: 700 }}>Add by invite code</div>
               <input
                 className="input"
                 type="text"
-                placeholder="Invite code"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                style={{ minWidth: 200, textTransform: "uppercase" }}
+                value={inviteCodeInput}
+                onChange={(event) => setInviteCodeInput(event.target.value)}
+                placeholder="Enter invite code"
+                style={{ textTransform: "uppercase" }}
               />
-              <button className="button" type="submit" disabled={inviteSaving || !inviteCode.trim()}>
-                {inviteSaving ? "Adding..." : inviteSuccess ? "Added!" : "Add friend"}
+              <button
+                className="button"
+                type="submit"
+                disabled={inviteSaving || !inviteCodeInput.trim()}
+              >
+                {inviteSaving ? "Adding..." : "Add friend"}
               </button>
             </form>
-            {inviteError && <div className="error-text" style={{ marginTop: 8 }}>{inviteError}</div>}
-          </div>
 
-          <div className="section-card">
-            <div className="section-heading" style={{ marginBottom: 8 }}>
-              <div style={{ fontWeight: 700 }}>Connections</div>
-            </div>
-            {loading ? (
-              <span className="skeleton" style={{ width: "100%", height: 80 }} />
-            ) : error ? (
-              <div className="error-text">{error}</div>
-            ) : normalizedConnections.length === 0 ? (
-              <div className="empty-state">No connections yet.</div>
-            ) : (
-              <div className="list">
-                {normalizedConnections.map((conn) => {
-                  const net = balances[conn.id] || 0;
-                  return (
-                    <div
-                      key={conn.id}
-                      className="row-card"
-                      style={{ gridTemplateColumns: "1fr auto", cursor: "pointer" }}
-                      onClick={() => {
-                        setSelectedFriend(conn.id);
-                        loadChat(conn.id);
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 800 }}>{conn.full_name || conn.email || `User ${conn.id}`}</div>
-                        <div className="muted">{conn.email}</div>
-                      </div>
-                      <div className="currency" style={{ color: net > 0 ? "#0b7a34" : net < 0 ? "#b91c1c" : "#0f172a" }}>
-                        {formatCurrency(net)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <form className="friend-entry-form" onSubmit={handleAddByEmail}>
+              <div style={{ fontWeight: 700 }}>Add by email</div>
+              <input
+                className="input"
+                type="email"
+                value={emailInput}
+                onChange={(event) => setEmailInput(event.target.value)}
+                placeholder="friend@example.com"
+              />
+              <button
+                className="button secondary"
+                type="submit"
+                disabled={emailSaving || !emailInput.trim()}
+              >
+                {emailSaving ? "Sending..." : "Invite"}
+              </button>
+            </form>
           </div>
+        )}
+
+        {/* Messages */}
+        {friendActionError && <div className="error-text">{friendActionError}</div>}
+        {friendActionSuccess && <div className="pill success-pill">{friendActionSuccess}</div>}
+        {error && <div className="error-text">{error}</div>}
+      </div>
+
+      {/* Friends list */}
+      <div className="section-card">
+        <div className="section-heading">
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>Friend balances</div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              Click a friend to view details, send money, or lend items.
+            </div>
+          </div>
+          <div className="pill">{friendRows.length} friends</div>
         </div>
 
-        <div className="stack">
-          <div className="section-card">
-            <div className="section-heading" style={{ marginBottom: 8 }}>
-              <div style={{ fontWeight: 700 }}>
-                {selectedFriend ? `Details - ${activeFriend?.full_name || activeFriend?.email || "Friend"}` : "Details"}
-              </div>
-              {selectedFriend && (
-                <button className="button secondary" type="button" onClick={handleClearSelection}>
-                  Clear
-                </button>
-              )}
-            </div>
-            {!selectedFriend ? (
-              <div className="empty-state">Select a friend to view details.</div>
-            ) : filteredTx.length === 0 ? (
-              <div className="empty-state">No expenses with this friend yet.</div>
-            ) : (
-              <div className="list">
-                {filteredTx.map((tx) => {
-                  const isLent = tx.transaction_type === "LENT";
-                  return (
-                    <div key={tx.id} className="row-card" style={{ gridTemplateColumns: "1fr 1fr auto" }}>
-                      <div>
-                        <div style={{ fontWeight: 700 }}>{tx.note || "Expense"}</div>
-                        <div className="muted">{formatDate(tx.transaction_date)}</div>
-                      </div>
-                      <div className="muted" style={{ fontSize: 13 }}>{isLent ? "You lent" : "You borrowed"}</div>
-                      <div className="currency" style={{ color: isLent ? "#0b7a34" : "#b91c1c" }}>
-                        {formatCurrency(tx.amount)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+        {loading ? (
+          <div className="list">
+            {[...Array(4)].map((_, index) => (
+              <span key={index} className="skeleton" style={{ width: "100%", height: 86 }} />
+            ))}
           </div>
-
-          {selectedFriend && (
-            <ChatPanel
-              title={`Chat with ${activeFriend?.full_name || activeFriend?.email || "friend"}`}
-              loading={chatLoading}
-              messages={chatMessages}
-              inputValue={chatInput}
-              onInputChange={setChatInput}
-              onSend={handleSend}
-              sending={chatSending}
-              currentUserEmail={user?.email}
-              error={chatError}
-            />
-          )}
-        </div>
+        ) : friendRows.length === 0 ? (
+          <div className="empty-state">
+            No friends yet. Add someone to start tracking balances.
+          </div>
+        ) : (
+          <div className="list">
+            {friendRows.map((friend) => (
+              <FriendCard key={friend.id} friend={friend} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

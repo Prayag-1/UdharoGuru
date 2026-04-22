@@ -3,7 +3,6 @@ import { useOutletContext } from "react-router-dom";
 
 import {
   addGroupMember,
-  addPrivateFriendByEmail,
   createGroup,
   deleteGroup,
   getGroupThread,
@@ -14,19 +13,15 @@ import {
   updateGroup,
 } from "../../api/private";
 import ChatPanel from "./components/ChatPanel";
+import { formatShortDate } from "./privateShared";
 import "./PrivateDashboard.css";
 import CreateGroupModal from "./modals/CreateGroupModal";
 import AddGroupMemberModal from "./modals/AddGroupMemberModal";
 
-const formatDate = (value) => {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-};
-
 export default function GroupsView() {
   const { user } = useOutletContext();
+  const pollRef = useRef(null);
+
   const [groups, setGroups] = useState([]);
   const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +29,6 @@ export default function GroupsView() {
   const [showCreate, setShowCreate] = useState(false);
   const [showAddMemberFor, setShowAddMemberFor] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [friendError, setFriendError] = useState(null);
   const [groupActionError, setGroupActionError] = useState(null);
   const [chatGroup, setChatGroup] = useState(null);
   const [chatThread, setChatThread] = useState(null);
@@ -43,18 +37,21 @@ export default function GroupsView() {
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState(null);
-  const pollRef = useRef(null);
+
+  const loadGroupsPage = async () => {
+    const [groupsRes, friendsRes] = await Promise.all([getGroups(), getPrivateFriends()]);
+    setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : groupsRes.data?.results || []);
+    setFriends(Array.isArray(friendsRes.data) ? friendsRes.data : friendsRes.data?.results || []);
+  };
 
   useEffect(() => {
     let active = true;
+
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const [groupsRes, friendsRes] = await Promise.all([getGroups(), getPrivateFriends()]);
-        if (!active) return;
-        setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : groupsRes.data?.results || []);
-        setFriends(Array.isArray(friendsRes.data) ? friendsRes.data : friendsRes.data?.results || []);
+        await loadGroupsPage();
       } catch (err) {
         console.error("Failed to load groups", err);
         if (!active) return;
@@ -65,6 +62,7 @@ export default function GroupsView() {
         if (active) setLoading(false);
       }
     };
+
     load();
     return () => {
       active = false;
@@ -72,7 +70,7 @@ export default function GroupsView() {
   }, []);
 
   const friendOptions = useMemo(
-    () => friends.map((f) => ({ id: f.id, label: f.email || f.invite_code || `User ${f.id}` })),
+    () => friends.map((friend) => ({ id: friend.id, label: friend.email || friend.invite_code || `User ${friend.id}` })),
     [friends]
   );
 
@@ -80,8 +78,7 @@ export default function GroupsView() {
     setSaving(true);
     try {
       await createGroup({ name });
-      const { data } = await getGroups();
-      setGroups(Array.isArray(data) ? data : data?.results || []);
+      await loadGroupsPage();
       setShowCreate(false);
       setGroupActionError(null);
     } finally {
@@ -91,16 +88,14 @@ export default function GroupsView() {
 
   const handleRenameGroup = async (group) => {
     const nextName = window.prompt("Rename group", group?.name || "");
-    if (!nextName || !nextName.trim()) return;
+    if (!nextName?.trim()) return;
     setSaving(true);
     try {
       await updateGroup(group.id, { name: nextName.trim() });
-      const { data } = await getGroups();
-      setGroups(Array.isArray(data) ? data : data?.results || []);
+      await loadGroupsPage();
       setGroupActionError(null);
     } catch (err) {
-      const msg = err?.response?.data?.detail || "Unable to rename group.";
-      setGroupActionError(msg);
+      setGroupActionError(err?.response?.data?.detail || "Unable to rename group.");
     } finally {
       setSaving(false);
     }
@@ -109,18 +104,17 @@ export default function GroupsView() {
   const handleDeleteGroup = async (group) => {
     const confirmed = window.confirm(`Delete group "${group?.name}"? This cannot be undone.`);
     if (!confirmed) return;
+
     setSaving(true);
     try {
       await deleteGroup(group.id);
       if (chatGroup?.id === group.id) {
         handleCloseChat();
       }
-      const { data } = await getGroups();
-      setGroups(Array.isArray(data) ? data : data?.results || []);
+      await loadGroupsPage();
       setGroupActionError(null);
     } catch (err) {
-      const msg = err?.response?.data?.detail || "Unable to delete group.";
-      setGroupActionError(msg);
+      setGroupActionError(err?.response?.data?.detail || "Unable to delete group.");
     } finally {
       setSaving(false);
     }
@@ -130,9 +124,11 @@ export default function GroupsView() {
     setSaving(true);
     try {
       await addGroupMember(groupId, { user_id: userId });
+      await loadGroupsPage();
       setShowAddMemberFor(null);
-      const { data } = await getGroups();
-      setGroups(Array.isArray(data) ? data : data?.results || []);
+      setGroupActionError(null);
+    } catch (err) {
+      setGroupActionError(err?.response?.data?.detail || "Unable to add group member.");
     } finally {
       setSaving(false);
     }
@@ -140,22 +136,22 @@ export default function GroupsView() {
 
   const loadGroupChat = async (group) => {
     if (!group) return;
-    setChatLoading(true);
-    setChatError(null);
-    setChatInput("");
     if (pollRef.current) clearInterval(pollRef.current);
+
+    setChatGroup(group);
     setChatThread(null);
     setChatMessages([]);
-    setChatGroup(group);
+    setChatInput("");
+    setChatError(null);
+    setChatLoading(true);
+
     try {
       const { data: thread } = await getGroupThread(group.id);
       setChatThread(thread);
-      const { data: msgs } = await getThreadMessages(thread.id);
-      setChatMessages(msgs);
+      const { data: messages } = await getThreadMessages(thread.id);
+      setChatMessages(messages);
     } catch (err) {
       console.error("Failed to load group chat", err);
-      setChatThread(null);
-      setChatMessages([]);
       setChatError("Unable to load group chat.");
     } finally {
       setChatLoading(false);
@@ -166,7 +162,8 @@ export default function GroupsView() {
     if (!chatThread?.id) return;
     let cancelled = false;
     let polling = false;
-    const run = async () => {
+
+    const refreshMessages = async () => {
       if (polling || document.visibilityState !== "visible") return;
       polling = true;
       try {
@@ -181,14 +178,14 @@ export default function GroupsView() {
       }
     };
 
-    run();
+    refreshMessages();
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        run();
-      }
+      if (document.visibilityState === "visible") refreshMessages();
     };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    pollRef.current = setInterval(run, 15000);
+    pollRef.current = setInterval(refreshMessages, 15000);
+
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -196,8 +193,8 @@ export default function GroupsView() {
     };
   }, [chatThread?.id]);
 
-  const handleSend = async (e) => {
-    e?.preventDefault?.();
+  const handleSend = async (event) => {
+    event?.preventDefault?.();
     if (!chatThread?.id || !chatInput.trim()) return;
     setChatSending(true);
     setChatError(null);
@@ -214,22 +211,6 @@ export default function GroupsView() {
     }
   };
 
-  const handleAddFriendByEmail = async (email) => {
-    setFriendError(null);
-    try {
-      await addPrivateFriendByEmail({ email });
-      const { data } = await getPrivateFriends();
-      setFriends(Array.isArray(data) ? data : data?.results || []);
-    } catch (err) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.email ||
-        err?.response?.data?.invite_code ||
-        "Unable to add friend.";
-      setFriendError(msg);
-    }
-  };
-
   const handleCloseChat = () => {
     setChatGroup(null);
     setChatThread(null);
@@ -239,52 +220,56 @@ export default function GroupsView() {
     if (pollRef.current) clearInterval(pollRef.current);
   };
 
-  if (loading) {
-    return (
-      <div className="dashboard-shell">
-        <div className="section-card">
-          <span className="skeleton" style={{ width: "100%", height: 80 }} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="dashboard-shell">
-      <div className="section-heading" style={{ marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>Groups</div>
+      <div className="section-card">
+        <div className="section-heading">
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900 }}>Groups</div>
+            <div className="muted" style={{ fontSize: 14 }}>
+              Group expenses stay isolated here so shared spending has a clear, dedicated flow.
+            </div>
+          </div>
+          <button className="button" type="button" onClick={() => setShowCreate(true)}>
+            Create group
+          </button>
         </div>
-        <button className="button" type="button" onClick={() => setShowCreate(true)}>
-          Create group
-        </button>
+        {error && <div className="error-text">{error}</div>}
+        {groupActionError && <div className="error-text">{groupActionError}</div>}
       </div>
 
-      {error && <div className="error-text">{error}</div>}
-      {groupActionError && <div className="error-text">{groupActionError}</div>}
-
-      <div className="split-layout">
-        <div className="stack">
-          <div className="section-card">
-            <div className="section-heading" style={{ marginBottom: 12 }}>
-              <div style={{ fontWeight: 700 }}>Your groups</div>
+      {loading ? (
+        <div className="section-card">
+          <span className="skeleton" style={{ width: "100%", height: 88 }} />
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="section-card">
+          <div className="empty-state">
+            <div style={{ fontWeight: 800, fontSize: 18 }}>No groups yet</div>
+            <div className="muted" style={{ fontSize: 14, maxWidth: 440 }}>
+              Use groups for shared expenses with multiple people. Create one when a trip, room, event, or project
+              needs a dedicated shared balance.
             </div>
-            {groups.length === 0 ? (
-              <div className="empty-state">No groups yet. Create one to get started.</div>
-            ) : (
+            <button className="button" type="button" onClick={() => setShowCreate(true)}>
+              Start a group
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="split-layout">
+          <div className="stack">
+            <div className="section-card">
               <div className="list">
                 {groups.map((group) => (
-                  <div
-                    key={group.id}
-                    className="row-card group-row"
-                  >
+                  <div key={group.id} className="row-card group-row">
                     <div className="group-left">
                       <div className="group-title">{group.name}</div>
                       <div className="group-meta">
-                        Created {formatDate(group.created_at)} · {group.member_count} members
+                        {group.member_count} members · Created {formatShortDate(group.created_at, { year: "numeric" })}
                       </div>
-                      <div className={`role-pill ${group.role === "ADMIN" ? "admin" : "member"}`}>
-                        {group.role}
+                      <div className="group-badges">
+                        <span className={`role-pill ${group.role === "ADMIN" ? "admin" : "member"}`}>{group.role}</span>
+                        <span className="badge">Shared expenses</span>
                       </div>
                     </div>
                     <div className="group-right">
@@ -308,38 +293,43 @@ export default function GroupsView() {
                   </div>
                 ))}
               </div>
-            )}
+            </div>
           </div>
-        </div>
 
-        <div className="stack">
-          <div className="section-card">
-            <div className="section-heading" style={{ marginBottom: 8 }}>
-              <div style={{ fontWeight: 700 }}>Friends</div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <EmailAddForm onSubmit={handleAddFriendByEmail} submitting={saving} />
-            </div>
-            {friendError && <div className="error-text">{friendError}</div>}
-            {friends.length === 0 ? (
-              <div className="empty-state">No friends yet. Add by invite code or email.</div>
-            ) : (
-              <div className="list">
-                {friends.map((f) => (
-                  <div key={f.id} className="row-card" style={{ gridTemplateColumns: "1fr auto" }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{f.email}</div>
-                      <div className="muted" style={{ fontSize: 13 }}>Invite code: {f.invite_code}</div>
-                    </div>
-                    <div className="muted" style={{ fontSize: 13 }}>Connected {formatDate(f.connected_at)}</div>
+          <div className="stack">
+            <div className="section-card">
+              <div className="section-heading">
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>
+                    {chatGroup ? `${chatGroup.name} chat` : "Group flow"}
                   </div>
-                ))}
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    Keep group collaboration adjacent to the group list, not mixed into Friends or Account.
+                  </div>
+                </div>
               </div>
-            )}
+              {chatGroup ? (
+                <ChatPanel
+                  title={`Group chat - ${chatGroup.name}`}
+                  loading={chatLoading}
+                  messages={chatMessages}
+                  inputValue={chatInput}
+                  onInputChange={setChatInput}
+                  onSend={handleSend}
+                  sending={chatSending}
+                  currentUserEmail={user?.email}
+                  onClose={handleCloseChat}
+                  error={chatError}
+                />
+              ) : (
+                <div className="empty-state">
+                  Select a group to open chat and continue the shared-expense workflow.
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-
+      )}
 
       <CreateGroupModal open={showCreate} onClose={() => setShowCreate(false)} onSubmit={handleCreateGroup} submitting={saving} />
       <AddGroupMemberModal
@@ -350,49 +340,6 @@ export default function GroupsView() {
         onSubmit={handleAddMember}
         submitting={saving}
       />
-
-      {chatGroup && (
-        <ChatPanel
-          title={`Group chat - ${chatGroup.name}`}
-          loading={chatLoading}
-          messages={chatMessages}
-          inputValue={chatInput}
-          onInputChange={setChatInput}
-          onSend={handleSend}
-          sending={chatSending}
-          currentUserEmail={user?.email}
-          onClose={handleCloseChat}
-          error={chatError}
-        />
-      )}
     </div>
-  );
-}
-
-function EmailAddForm({ onSubmit, submitting }) {
-  const [email, setEmail] = useState("");
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!email) return;
-    await onSubmit(email);
-    setEmail("");
-  };
-
-  return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-      <input
-        className="input"
-        type="email"
-        placeholder="friend@example.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-        style={{ minWidth: 240 }}
-      />
-      <button className="button" type="submit" disabled={submitting}>
-        {submitting ? "Adding..." : "Add by email"}
-      </button>
-    </form>
   );
 }

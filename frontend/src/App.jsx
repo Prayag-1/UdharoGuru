@@ -28,11 +28,12 @@ import PaymentCancel from "./pages/business/PaymentCancel";
 import BusinessPaymentRequest from "./pages/business/BusinessPaymentRequest";
 import PrivateLayout from "./pages/private/PrivateLayout";
 import DashboardView from "./pages/private/DashboardView";
-import ExpensesView from "./pages/private/ExpensesView";
 import FriendsView from "./pages/private/FriendsView";
+import FriendDetailView from "./pages/private/FriendDetailView";
 import ActivityView from "./pages/private/ActivityView";
 import GroupsView from "./pages/private/GroupsView";
 import PrivatePaymentRequest from "./pages/private/PrivatePaymentRequest";
+import AccountView from "./pages/private/AccountView";
 
 function App() {
   return (
@@ -71,15 +72,16 @@ function App() {
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/payment-cancel" element={<PaymentCancel />} />
 
-          <Route path="/private" element={<Navigate to="/private/dashboard" replace />} />
+          <Route path="/private" element={<Navigate to="/private/friends" replace />} />
           <Route path="/private/*" element={<PrivateLayout />}>
             <Route path="dashboard" element={<DashboardView />} />
             <Route path="payment-request" element={<PrivatePaymentRequest />} />
-            <Route path="expenses" element={<ExpensesView />} />
             <Route path="friends" element={<FriendsView />} />
+            <Route path="friends/:id" element={<FriendDetailView />} />
             <Route path="groups" element={<GroupsView />} />
             <Route path="activity" element={<ActivityView />} />
-            <Route path="*" element={<Navigate to="/private/dashboard" replace />} />
+            <Route path="account" element={<AccountView />} />
+            <Route path="*" element={<Navigate to="/private/friends" replace />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/auth/login" replace />} />

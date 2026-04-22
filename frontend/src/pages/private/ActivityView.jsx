@@ -1,128 +1,353 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
+import {
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts";
 
-import { getPrivateTransactions } from "../../api/private";
+import {
+  getGroups,
+  getPrivateItemReminders,
+  getPrivateItems,
+  getPrivateSummary,
+  getPrivateTransactions,
+} from "../../api/private";
+import {
+  connectionDisplayName,
+  formatCurrency,
+  formatDateTime,
+  formatShortDate,
+  getConnectionBalanceMap,
+  normalizeConnection,
+} from "./privateShared";
 import "./PrivateDashboard.css";
 
-const formatDateTime = (value) => {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString(undefined, { month: "short", day: "numeric" });
-};
+const FILTERS = ["All", "Reminders", "Settlements", "Insights"];
 
-const formatCurrency = (value) =>
-  Number(value || 0).toLocaleString("ne-NP", { style: "currency", currency: "NPR", minimumFractionDigits: 2 });
-
-const isEmail = (value) => /\S+@\S+\.\S+/.test((value || "").trim());
-
-const buildGmailLink = ({ to, subject, body }) => {
-  const params = new URLSearchParams({
-    view: "cm",
-    fs: "1",
-    to,
-    su: subject,
-    body,
-  });
-  return `https://mail.google.com/mail/?${params.toString()}`;
+const DebtComparisonTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const { name, value } = payload[0];
+  return (
+    <div className="tooltip-card">
+      <div className="tooltip-title">{name}</div>
+      <div className="tooltip-value">{formatCurrency(value)}</div>
+    </div>
+  );
 };
 
 export default function ActivityView() {
-  const { user } = useOutletContext();
-  const [activity, setActivity] = useState([]);
+  const { user, connections, notifications } = useOutletContext();
+  const [summary, setSummary] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [items, setItems] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [filter, setFilter] = useState("All");
+
+  const normalizedConnections = useMemo(() => connections.map(normalizeConnection), [connections]);
+  const balances = useMemo(
+    () => getConnectionBalanceMap(normalizedConnections, transactions),
+    [normalizedConnections, transactions]
+  );
 
   useEffect(() => {
     let active = true;
+
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const { data } = await getPrivateTransactions();
+        const [summaryRes, txRes, itemsRes, remindersRes, groupsRes] = await Promise.all([
+          getPrivateSummary(),
+          getPrivateTransactions(),
+          getPrivateItems(),
+          getPrivateItemReminders(),
+          getGroups(),
+        ]);
+
         if (!active) return;
-        const list = Array.isArray(data) ? data : data?.results || [];
-        const sorted = [...list].sort(
-          (a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
-        );
-        setActivity(sorted.slice(0, 20));
+
+        setSummary(summaryRes.data);
+        setTransactions(Array.isArray(txRes.data) ? txRes.data : txRes.data?.results || []);
+        setItems(Array.isArray(itemsRes.data) ? itemsRes.data : itemsRes.data?.results || []);
+        setReminders(Array.isArray(remindersRes.data) ? remindersRes.data : remindersRes.data?.results || []);
+        setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : groupsRes.data?.results || []);
       } catch (err) {
-        console.error("Failed to load activity", err);
+        console.error("Failed to load private activity", err);
         if (!active) return;
-        setActivity([]);
-        setError("Unable to load activity.");
+        setSummary(null);
+        setTransactions([]);
+        setItems([]);
+        setReminders([]);
+        setGroups([]);
+        setError("Unable to load private activity.");
       } finally {
         if (active) setLoading(false);
       }
     };
+
     load();
     return () => {
       active = false;
     };
   }, []);
 
+  const activityFeed = useMemo(() => {
+    const transactionEvents = transactions.map((tx) => {
+      const isSettlement = (tx.note || "").toLowerCase().includes("settlement");
+      return {
+        id: `tx-${tx.id}`,
+        kind: isSettlement ? "Settlements" : "All",
+        title: isSettlement ? "Settlement recorded" : "Expense updated",
+        description: `${tx.person_name} · ${tx.transaction_type === "LENT" ? "You lent" : "You borrowed"} ${formatCurrency(tx.amount)}`,
+        meta: tx.note || "Private transaction",
+        timestamp: tx.transaction_date,
+      };
+    });
+
+    const reminderEvents = reminders.map((item) => ({
+      id: `reminder-${item.id}`,
+      kind: "Reminders",
+      title: item.due_status === "OVERDUE" ? "Item reminder overdue" : "Item reminder due",
+      description: `${item.item_name} · ${item.borrower_name || "Friend"}`,
+      meta: item.expected_return_date
+        ? `Expected return ${formatShortDate(item.expected_return_date, { year: "numeric" })}`
+        : "No return date set",
+      timestamp: item.expected_return_date || item.lent_date,
+    }));
+
+    const itemEvents = items
+      .filter((loan) => loan.status === "ACTIVE")
+      .map((loan) => ({
+        id: `item-${loan.id}`,
+        kind: "All",
+        title: "Item lent",
+        description: `${loan.item_name} · Borrower #${loan.borrower}`,
+        meta: loan.lent_date ? `Lent on ${formatShortDate(loan.lent_date, { year: "numeric" })}` : "Active item loan",
+        timestamp: loan.lent_date,
+      }));
+
+    const groupEvents = groups.map((group) => ({
+      id: `group-${group.id}`,
+      kind: "All",
+      title: "Group active",
+      description: group.name,
+      meta: `${group.member_count} members · ${group.role}`,
+      timestamp: group.created_at,
+    }));
+
+    const notificationEvents = notifications.map((notification) => ({
+      id: `notification-${notification.id}`,
+      kind: notification.message?.toLowerCase().includes("reminder") ? "Reminders" : "All",
+      title: notification.is_read ? "Notification" : "New notification",
+      description: notification.message,
+      meta: notification.sender_name || "System",
+      timestamp: notification.created_at,
+    }));
+
+    return [...transactionEvents, ...reminderEvents, ...itemEvents, ...groupEvents, ...notificationEvents]
+      .filter((entry) => entry.timestamp)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [groups, items, notifications, reminders, transactions]);
+
+  const filteredFeed = useMemo(() => {
+    if (filter === "All") return activityFeed;
+    if (filter === "Insights") return activityFeed;
+    return activityFeed.filter((entry) => entry.kind === filter);
+  }, [activityFeed, filter]);
+
+  const topFriends = useMemo(() => {
+    return normalizedConnections
+      .map((conn) => ({
+        id: conn.id,
+        label: connectionDisplayName(conn),
+        balance: Number(balances[conn.id] || 0),
+      }))
+      .filter((entry) => entry.balance !== 0)
+      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+      .slice(0, 5);
+  }, [balances, normalizedConnections]);
+
+  const debtComparison = useMemo(() => {
+    const owed = Math.abs(Number(summary?.total_receivable || 0));
+    const owes = Math.abs(Number(summary?.total_payable || 0));
+    return [
+      { name: "You are owed", value: owed, fill: "#10b981" },
+      { name: "You owe", value: owes, fill: "#ef4444" },
+    ].filter((entry) => entry.value > 0);
+  }, [summary]);
+
+  const settlementsThisMonth = useMemo(() => {
+    const now = new Date();
+    return transactions.filter((tx) => {
+      const txDate = new Date(tx.transaction_date || 0);
+      return (
+        tx.note?.toLowerCase().includes("settlement") &&
+        txDate.getMonth() === now.getMonth() &&
+        txDate.getFullYear() === now.getFullYear()
+      );
+    }).length;
+  }, [transactions]);
+
   return (
     <div className="dashboard-shell">
-      <div className="section-heading" style={{ marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 900 }}>Recent activity</div>
-          {user?.email && <div className="muted" style={{ fontSize: 13 }}>{user.email}</div>}
+      <div className="section-card">
+        <div className="section-heading">
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900 }}>Activity</div>
+            <div className="muted" style={{ fontSize: 14 }}>
+              History, reminders, and insights stay here so the Friends tab remains operational and clean.
+            </div>
+          </div>
+          {user?.email && <div className="pill">{user.email}</div>}
+        </div>
+
+        <div className="chip-row">
+          {FILTERS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`chip ${filter === option ? "chip-active" : ""}`}
+              onClick={() => setFilter(option)}
+            >
+              {option}
+            </button>
+          ))}
         </div>
       </div>
 
-      {loading ? (
-        <div className="section-card">
-          <span className="skeleton" style={{ width: "100%", height: 80 }} />
+      <div className="grid-3">
+        <div className="summary-card">
+          <div className="card-title">Total owed to you</div>
+          <div className="currency positive" style={{ marginTop: 6 }}>
+            {formatCurrency(summary?.total_receivable || 0)}
+          </div>
         </div>
-      ) : error ? (
-        <div className="error-text">{error}</div>
-      ) : activity.length === 0 ? (
-        <div className="empty-state">No recent activity.</div>
-      ) : (
-        <div className="section-card">
-          <div className="list">
-            {activity.map((item) => {
-              const isLent = item.transaction_type === "LENT";
-              const personEmail = isEmail(item.person_name) ? item.person_name.trim() : "";
-              const gmailUrl = personEmail
-                ? buildGmailLink({
-                    to: personEmail,
-                    subject: isLent ? "Outstanding amount reminder" : "Settlement update",
-                    body: isLent
-                      ? `Hello,\n\nThis is a reminder that ${formatCurrency(item.amount)} is still pending.${
-                          item.note ? `\n\nReference: ${item.note}` : ""
-                        }\n\nPlease settle it when possible.\n\nThanks.`
-                      : `Hello,\n\nI am reaching out regarding the ${formatCurrency(item.amount)} transaction${
-                          item.note ? ` for "${item.note}"` : ""
-                        }.\n\nPlease let me know the settlement status.\n\nThanks.`,
-                  })
-                : null;
+        <div className="summary-card">
+          <div className="card-title">Total you owe</div>
+          <div className="currency negative" style={{ marginTop: 6 }}>
+            {formatCurrency(summary?.total_payable || 0)}
+          </div>
+        </div>
+        <div className="summary-card">
+          <div className="card-title">Settlements this month</div>
+          <div style={{ fontSize: 24, fontWeight: 800, marginTop: 6 }}>{settlementsThisMonth}</div>
+        </div>
+      </div>
 
-              return (
-                <div key={item.id} className="row-card" style={{ gridTemplateColumns: "1fr 1fr auto auto" }}>
-                  <div>
-                    <div style={{ fontWeight: 800 }}>{item.person_name}</div>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      {item.note || "Expense"} · {formatDateTime(item.transaction_date)}
+      {(filter === "All" || filter === "Insights") && (
+        <div className="grid-2">
+          <div className="section-card">
+            <div className="section-heading">
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 18 }}>Debt distribution</div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  The existing analytics stay visible here instead of cluttering the home screen.
+                </div>
+              </div>
+            </div>
+            {debtComparison.length === 0 ? (
+              <div className="empty-state">No active debt insights yet.</div>
+            ) : (
+              <div style={{ width: "100%", height: 240 }}>
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Tooltip content={<DebtComparisonTooltip />} />
+                    <Legend layout="vertical" align="right" verticalAlign="middle" />
+                    <Pie data={debtComparison} dataKey="value" nameKey="name" innerRadius="52%" outerRadius="84%">
+                      {debtComparison.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          <div className="section-card">
+            <div className="section-heading">
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 18 }}>Top friends by outstanding balance</div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  Strongest signals first, without adding extra dashboard noise.
+                </div>
+              </div>
+            </div>
+            {topFriends.length === 0 ? (
+              <div className="empty-state">No outstanding balances yet.</div>
+            ) : (
+              <div className="list">
+                {topFriends.map((friend) => (
+                  <div key={friend.id} className="row-card detail-row">
+                    <div style={{ fontWeight: 700 }}>{friend.label}</div>
+                    <div className={`currency ${friend.balance > 0 ? "positive" : "negative"}`}>
+                      {friend.balance > 0 ? formatCurrency(friend.balance) : formatCurrency(Math.abs(friend.balance))}
                     </div>
                   </div>
-                  <div className="muted" style={{ fontSize: 13 }}>{isLent ? "You lent" : "You borrowed"}</div>
-                  <div className="currency" style={{ color: isLent ? "#0b7a34" : "#b91c1c" }}>
-                    {formatCurrency(item.amount)}
-                  </div>
-                  <div className="row-actions">
-                    {gmailUrl && (
-                      <a className="button secondary sm" href={gmailUrl} target="_blank" rel="noreferrer">
-                        Gmail
-                      </a>
-                    )}
-                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="insight-meta-grid">
+              <div className="summary-card">
+                <div className="card-title">Pending reminders</div>
+                <div style={{ fontWeight: 800, fontSize: 22, marginTop: 6 }}>{reminders.length}</div>
+              </div>
+              <div className="summary-card">
+                <div className="card-title">Pending item returns</div>
+                <div style={{ fontWeight: 800, fontSize: 22, marginTop: 6 }}>
+                  {items.filter((loan) => loan.status === "ACTIVE").length}
                 </div>
-              );
-            })}
+              </div>
+            </div>
           </div>
         </div>
       )}
+
+      <div className="section-card">
+        <div className="section-heading">
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>
+              {filter === "Insights" ? "Recent activity snapshot" : "Recent private activity"}
+            </div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              Expenses, settlements, reminder states, groups, and notifications in one chronological view.
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="list">
+            {[...Array(4)].map((_, index) => (
+              <span key={index} className="skeleton" style={{ width: "100%", height: 72 }} />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="error-text">{error}</div>
+        ) : filteredFeed.length === 0 ? (
+          <div className="empty-state">No activity matches this filter yet.</div>
+        ) : (
+          <div className="list">
+            {filteredFeed.slice(0, 24).map((entry) => (
+              <div key={entry.id} className="row-card activity-row">
+                <div>
+                  <div style={{ fontWeight: 700 }}>{entry.title}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>{entry.description}</div>
+                </div>
+                <div className="muted" style={{ fontSize: 13 }}>{entry.meta}</div>
+                <div className="pill">{formatDateTime(entry.timestamp)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

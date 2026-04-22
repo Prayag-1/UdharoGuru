@@ -101,11 +101,10 @@ export default function PrivateLayout() {
 
   const navItems = useMemo(
     () => [
-      { to: "/private/dashboard", label: "Dashboard" },
-      { to: "/private/activity", label: "Recent activity" },
-      { to: "/private/expenses", label: "All expenses" },
       { to: "/private/friends", label: "Friends" },
       { to: "/private/groups", label: "Groups" },
+      { to: "/private/activity", label: "Activity" },
+      { to: "/private/account", label: "Account" },
     ],
     []
   );
@@ -171,12 +170,9 @@ export default function PrivateLayout() {
         <div className="layout-shell">
           <aside className="sidebar">
             <div className="sidebar-nav">
-              {[...Array(5)].map((_, idx) => (
+              {[...Array(4)].map((_, idx) => (
                 <SkeletonBlock key={idx} height={38} />
               ))}
-            </div>
-            <div className="sidebar-section">
-              <SkeletonBlock height={32} />
             </div>
           </aside>
 
@@ -285,24 +281,25 @@ export default function PrivateLayout() {
               </NavLink>
             ))}
           </div>
-          <div className="sidebar-section">
-            <div className="label" style={{ fontSize: 12, letterSpacing: 0.5 }}>Invite friends</div>
-            {loading ? (
-              <SkeletonBlock height={32} />
-            ) : (
-              <div className="invite-box">
-                <input className="input" value={inviteCode} readOnly />
-                <button className="button secondary" type="button" onClick={handleCopy} disabled={!inviteCode}>
-                  {copyState === "copied" ? "Copied!" : copyState === "error" ? "Copy failed" : "Copy"}
-                </button>
-              </div>
-            )}
-          </div>
           {error && <div className="error-text">{error}</div>}
         </aside>
 
         <main className="main-content">
-          <Outlet context={{ user, connections, setConnections }} />
+          <Outlet
+            context={{
+              user,
+              connections,
+              setConnections,
+              notifications,
+              unreadCount,
+              inviteCode,
+              copyState,
+              handleCopyInvite: handleCopy,
+              handleLogout,
+              theme,
+              toggleTheme,
+            }}
+          />
         </main>
       </div>
     </div>
