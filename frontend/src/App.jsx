@@ -16,6 +16,7 @@ import ProductsPage from "./pages/business/ProductsPage";
 import CreditSalesPage from "./pages/business/CreditSalesPage";
 import CreateCreditSale from "./pages/business/CreateCreditSale";
 import CreditSaleDetail from "./pages/business/CreditSaleDetail";
+import IncomePage from "./pages/business/IncomePage";
 import OCRUpload from "./pages/business/OCRUpload";
 import PaymentsPage from "./pages/business/PaymentsPage";
 import PendingVerification from "./pages/business/PendingVerification";
@@ -24,12 +25,14 @@ import OcrList from "./pages/business/OcrList";
 import OcrDetail from "./pages/business/OcrDetail";
 import PaymentSuccess from "./pages/business/PaymentSuccess";
 import PaymentCancel from "./pages/business/PaymentCancel";
+import BusinessPaymentRequest from "./pages/business/BusinessPaymentRequest";
 import PrivateLayout from "./pages/private/PrivateLayout";
 import DashboardView from "./pages/private/DashboardView";
 import ExpensesView from "./pages/private/ExpensesView";
 import FriendsView from "./pages/private/FriendsView";
 import ActivityView from "./pages/private/ActivityView";
 import GroupsView from "./pages/private/GroupsView";
+import PrivatePaymentRequest from "./pages/private/PrivatePaymentRequest";
 
 function App() {
   return (
@@ -45,6 +48,7 @@ function App() {
           <Route path="/business/*" element={<BusinessLayout />}>
             <Route path="dashboard" element={<BusinessDashboard />} />
             <Route path="payment" element={<Payment />} />
+            <Route path="payment-request" element={<BusinessPaymentRequest />} />
             <Route path="profile" element={<BusinessProfileSetup />} />
             <Route path="customers" element={<CustomersPage />} />
             <Route path="customers/:id" element={<CustomerProfile />} />
@@ -52,6 +56,7 @@ function App() {
             <Route path="credit-sales" element={<CreditSalesPage />} />
             <Route path="credit-sales/create" element={<CreateCreditSale />} />
             <Route path="credit-sales/:id" element={<CreditSaleDetail />} />
+            <Route path="income" element={<IncomePage />} />
             <Route path="ocr/upload" element={<OCRUpload />} />
             <Route path="payments" element={<PaymentsPage />} />
             <Route path="kyc" element={<KycForm />} />
@@ -69,6 +74,7 @@ function App() {
           <Route path="/private" element={<Navigate to="/private/dashboard" replace />} />
           <Route path="/private/*" element={<PrivateLayout />}>
             <Route path="dashboard" element={<DashboardView />} />
+            <Route path="payment-request" element={<PrivatePaymentRequest />} />
             <Route path="expenses" element={<ExpensesView />} />
             <Route path="friends" element={<FriendsView />} />
             <Route path="groups" element={<GroupsView />} />

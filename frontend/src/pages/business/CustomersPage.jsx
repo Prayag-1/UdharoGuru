@@ -11,6 +11,18 @@ const formatMoney = (value) => {
   return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+const buildWhatsAppLink = (customer) => {
+  const phone = String(customer.phone || "").replace(/\D/g, "");
+  const outstanding = Number(customer.outstanding_balance || 0);
+  if (!phone) return "";
+
+  const message =
+    outstanding > 0
+      ? `Hello ${customer.name}, this is a reminder that you still have Rs. ${formatMoney(outstanding)} left to pay. Please clear the remaining balance at your earliest convenience.`
+      : `Hello ${customer.name}, this is a message from your business contact in Udharo Guru.`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+};
+
 export default function CustomersPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -154,6 +166,22 @@ export default function CustomersPage() {
                   <div style={{ color: "#0f172a" }}>{customer.phone || "-"}</div>
                   <div style={{ color: "#0f172a", fontWeight: 800 }}>Rs. {formatMoney(customer.outstanding_balance)}</div>
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                    {buildWhatsAppLink(customer) && (
+                      <button
+                        onClick={() => window.open(buildWhatsAppLink(customer), "_blank", "noopener,noreferrer")}
+                        style={{
+                          color: "#065f46",
+                          fontWeight: 800,
+                          border: "1px solid #a7f3d0",
+                          padding: "6px 10px",
+                          borderRadius: 10,
+                          background: "#ecfdf5",
+                          cursor: "pointer",
+                        }}
+                      >
+                        WhatsApp
+                      </button>
+                    )}
                     <Link
                       to={`/business/customers/${customer.id}`}
                       style={{

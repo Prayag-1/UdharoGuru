@@ -9,6 +9,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
   const [itemName, setItemName] = useState("");
   const [itemDescription, setItemDescription] = useState("");
   const [expectedReturnDate, setExpectedReturnDate] = useState("");
+  const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderInterval, setReminderInterval] = useState(3);
   const [error, setError] = useState(null);
 
@@ -18,6 +19,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
       setItemName("");
       setItemDescription("");
       setExpectedReturnDate("");
+      setReminderEnabled(true);
       setReminderInterval(3);
       setError(null);
     }
@@ -41,6 +43,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
         item_description: itemDescription.trim() || null,
         lent_date: today(),
         expected_return_date: expectedReturnDate || null,
+        reminder_enabled: reminderEnabled,
         reminder_interval_days: Number(reminderInterval) || 3,
       });
     } catch (err) {
@@ -84,7 +87,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
             </select>
           </label>
 
-          <label className="label" title="Give the item a name you’ll recognize later">
+          <label className="label" title="Give the item a name you will recognize later">
             Item name
             <input
               className="input"
@@ -114,8 +117,17 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
             />
           </label>
 
-          <label className="label" title="We’ll nudge them after this many days">
-            Reminder interval (days)
+          <label className="label" title="Enable reminder emails for this item">
+            <span>Email reminder timer</span>
+            <input
+              type="checkbox"
+              checked={reminderEnabled}
+              onChange={(e) => setReminderEnabled(e.target.checked)}
+            />
+          </label>
+
+          <label className="label" title="How many days before the due date this item should enter the reminder queue">
+            Reminder timer (days before due date)
             <input
               className="input"
               type="number"
@@ -123,6 +135,7 @@ export default function AddItemModal({ open, onClose, onSubmit, connections = []
               value={reminderInterval}
               onChange={(e) => setReminderInterval(e.target.value)}
               required
+              disabled={!reminderEnabled}
             />
           </label>
         </div>

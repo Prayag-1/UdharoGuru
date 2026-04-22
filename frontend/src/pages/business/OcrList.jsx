@@ -12,6 +12,11 @@ const statusStyle = (status) => {
   return { background: "#ecfeff", color: "#0f172a", borderColor: "#c0e8ed" };
 };
 
+const documentTypeLabel = (documentType) => {
+  if (documentType === "CUSTOMER_ID") return "Customer ID";
+  return "Receipt";
+};
+
 const formatCurrency = (value) => {
   if (value === null || value === undefined) return "—";
   const num = Number(value);
@@ -69,7 +74,7 @@ export default function OcrList() {
     load();
   }, [gateLoading, user]);
 
-  const handleUpload = async (file) => {
+  const handleUpload = async (file, documentType) => {
     if (!file) return;
     setUploading(true);
     setUploadError("");
@@ -77,6 +82,7 @@ export default function OcrList() {
     try {
       const form = new FormData();
       form.append("image", file);
+      form.append("document_type", documentType);
       const { data } = await uploadBusinessOcr(form);
       navigate(`/business/ocr/${data.id}`, { replace: false });
     } catch (err) {
@@ -131,9 +137,12 @@ export default function OcrList() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 26, fontWeight: 900, color: "#0f172a" }}>OCR Documents</div>
-          <div style={{ color: "#475569" }}>Upload receipts, review the extraction, and confirm into transactions.</div>
+          <div style={{ color: "#475569" }}>Upload receipts or customer IDs, review the extraction, and confirm into customers, credit sales, or income.</div>
         </div>
-        <UploadButton disabled={uploading} onFile={handleUpload} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <UploadButton disabled={uploading} label="Upload receipt" documentType="RECEIPT" onFile={handleUpload} />
+          <UploadButton disabled={uploading} label="Scan customer ID" documentType="CUSTOMER_ID" onFile={handleUpload} />
+        </div>
       </div>
 
       {success && (
@@ -162,8 +171,8 @@ export default function OcrList() {
         <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr", padding: "10px 12px", fontWeight: 800, color: "#1e293b", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12 }}>
             <span>Uploaded</span>
-            <span>Merchant</span>
-            <span>Amount</span>
+            <span>Document</span>
+            <span>Amount / Phone</span>
             <span>Status / Actions</span>
           </div>
           {sortedDocs.map((doc) => (
@@ -185,8 +194,15 @@ export default function OcrList() {
                 <div style={{ fontWeight: 800 }}>{formatDate(doc.created_at)}</div>
                 <div style={{ color: "#64748b", fontSize: 13 }}>ID #{doc.id}</div>
               </div>
-              <div style={{ fontWeight: 700 }}>{doc.extracted_merchant || "Unknown"}</div>
-              <div style={{ fontWeight: 800 }}>{formatCurrency(doc.extracted_amount)}</div>
+              <div>
+                <div style={{ fontWeight: 700 }}>{doc.extracted_merchant || "Unknown"}</div>
+                <div style={{ color: "#64748b", fontSize: 13 }}>{documentTypeLabel(doc.document_type)}</div>
+              </div>
+              <div style={{ fontWeight: 800 }}>
+                {doc.document_type === "CUSTOMER_ID"
+                  ? doc.extracted_phone || "No phone detected"
+                  : formatCurrency(doc.extracted_amount)}
+              </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <span
                   style={{
@@ -240,7 +256,7 @@ export default function OcrList() {
   );
 }
 
-function UploadButton({ onFile, disabled }) {
+function UploadButton({ onFile, disabled, label, documentType }) {
   const [hover, setHover] = useState(false);
   return (
     <label
@@ -260,7 +276,7 @@ function UploadButton({ onFile, disabled }) {
         opacity: disabled ? 0.7 : 1,
       }}
     >
-      <span style={{ fontSize: 14 }}>Upload receipt</span>
+      <span style={{ fontSize: 14 }}>{label}</span>
       <input
         type="file"
         accept="image/png,image/jpeg,image/jpg"
@@ -268,7 +284,7 @@ function UploadButton({ onFile, disabled }) {
         onChange={(e) => {
           if (disabled) return;
           const file = e.target.files?.[0];
-          if (file) onFile(file);
+          if (file) onFile(file, documentType);
           e.target.value = "";
         }}
       />

@@ -119,7 +119,7 @@ export default function Payment() {
       const token = localStorage.getItem('access_token');
 
       const response = await axios.post(
-        'http://localhost:8000/api/accounts/create-checkout-session/',
+        'http://localhost:8000/api/auth/create-checkout-session/',
         {},
         {
           headers: {

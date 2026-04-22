@@ -85,8 +85,11 @@ def stripe_webhook(request):
     Handle Stripe webhook events.
     
     Listens for:
-    - checkout.session.completed: Update user payment status
+    - checkout.session.completed: Update user payment status or payment request status
     """
+    from core.models import PaymentRequest
+    from django.utils import timezone
+    
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
     
@@ -107,32 +110,53 @@ def stripe_webhook(request):
         session = event['data']['object']
         
         try:
-            # Get user from metadata
-            user_id = session['metadata'].get('user_id')
-            if not user_id:
-                return JsonResponse({'error': 'No user_id in metadata'}, status=400)
+            # Check if this is a payment request or business activation
+            payment_request_id = session['metadata'].get('payment_request_id')
+            
+            if payment_request_id:
+                # Handle payment request completion
+                try:
+                    payment_request = PaymentRequest.objects.get(id=payment_request_id)
+                    payment_request.mark_as_paid()
+                    
+                    # Update related credit sale if exists
+                    if payment_request.credit_sale:
+                        payment_request.credit_sale.record_payment(payment_request.amount)
+                        payment_request.credit_sale.save(
+                            update_fields=['amount_paid', 'amount_due', 'status']
+                        )
+                    
+                    return JsonResponse({'status': 'payment_request_processed'}, status=200)
+                except PaymentRequest.DoesNotExist:
+                    return JsonResponse({'error': 'Payment request not found'}, status=404)
+            
+            else:
+                # Handle business account activation
+                user_id = session['metadata'].get('user_id')
+                if not user_id:
+                    return JsonResponse({'error': 'No user_id or payment_request_id in metadata'}, status=400)
 
-            user = User.objects.get(id=user_id)
+                user = User.objects.get(id=user_id)
 
-            # Update user status to KYC_PENDING (payment approved)
-            user.business_status = 'KYC_PENDING'
-            user.save(update_fields=['business_status'])
+                # Update user status to KYC_PENDING (payment approved)
+                user.business_status = 'KYC_PENDING'
+                user.save(update_fields=['business_status'])
 
-            # Ensure BusinessProfile exists
-            profile, created = BusinessProfile.objects.get_or_create(
-                user=user,
-                defaults={
-                    'business_name': user.full_name,
-                    'owner_name': user.full_name,
-                    'phone': '',
-                    'email': user.email,
-                    'address': '',
-                    'business_type': '',
-                    'pan_vat_number': '',
-                }
-            )
+                # Ensure BusinessProfile exists
+                profile, created = BusinessProfile.objects.get_or_create(
+                    user=user,
+                    defaults={
+                        'business_name': user.full_name,
+                        'owner_name': user.full_name,
+                        'phone': '',
+                        'email': user.email,
+                        'address': '',
+                        'business_type': '',
+                        'pan_vat_number': '',
+                    }
+                )
 
-            return JsonResponse({'status': 'success'}, status=200)
+                return JsonResponse({'status': 'business_activation_processed'}, status=200)
 
         except User.DoesNotExist:
             return JsonResponse({'error': 'User not found'}, status=404)

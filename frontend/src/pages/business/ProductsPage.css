@@ -8,21 +8,26 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 32px;
-  gap: 16px;
+  margin-bottom: 36px;
+  gap: 20px;
 }
 
 .products-title {
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 36px;
+  font-weight: 800;
   margin: 0;
   color: var(--text);
+  background: linear-gradient(135deg, #0f1419 0%, #6b7280 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .products-subtitle {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--muted);
-  margin: 8px 0 0 0;
+  margin: 10px 0 0 0;
+  font-weight: 500;
 }
 
 /* ===== BUTTONS ===== */
@@ -33,19 +38,20 @@
   border-radius: var(--radius-sm);
   border: none;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #ffffff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-strong);
   transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.5);
 }
 
 .btn-primary:disabled {
@@ -54,13 +60,15 @@
 }
 
 .btn-secondary {
-  background: var(--surface-muted);
+  background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
 }
 
 .btn-secondary:hover {
-  background: var(--border);
+  background: var(--surface-muted);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .btn-delete {
@@ -68,10 +76,12 @@
   color: var(--negative);
   padding: 6px 12px;
   font-size: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 .btn-delete:hover {
-  background: var(--surface-muted);
+  background: var(--negative-light);
+  border-color: var(--negative);
 }
 
 /* ===== PRODUCTS CARD ===== */
@@ -80,6 +90,12 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-soft);
+  transition: all 0.3s ease;
+}
+
+.products-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
 }
 
 .table-wrapper {
@@ -94,26 +110,27 @@
 
 .products-table thead {
   border-bottom: 2px solid var(--border);
-  background: var(--surface-muted);
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
 }
 
 .products-table th {
   padding: 14px 16px;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
   font-size: 11px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
 }
 
 .table-row {
   border-bottom: 1px solid var(--border);
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .table-row:hover {
   background: var(--surface-muted);
+  border-left: 3px solid var(--accent);
 }
 
 .products-table td {
@@ -122,23 +139,25 @@
 }
 
 .product-name {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .product-price {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .stock-badge {
   display: inline-block;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 6px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .stock-badge.in-stock {
-  background: #dcfce7;
+  background: var(--positive-light);
   color: var(--positive);
 }
 
@@ -161,13 +180,14 @@
 }
 
 .error-banner {
-  padding: 12px 16px;
+  padding: 14px 16px;
   margin-bottom: 16px;
-  background: #fecaca;
-  border: 1px solid #fca5a5;
+  background: var(--negative-light);
+  border: 1px solid #f87171;
   border-radius: var(--radius-sm);
   color: var(--negative);
   font-size: 13px;
+  font-weight: 600;
 }
 
 .empty-state {
@@ -175,13 +195,13 @@
   text-align: center;
   color: var(--muted);
   background: var(--surface);
-  border: 1px dashed var(--border);
+  border: 2px dashed var(--border);
   border-radius: var(--radius-md);
 }
 
 .empty-title {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
   margin: 0 0 8px 0;
 }

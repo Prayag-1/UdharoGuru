@@ -26,6 +26,12 @@ class OCRScan(models.Model):
 
 
 class OCRDocument(models.Model):
+    RECEIPT = "RECEIPT"
+    CUSTOMER_ID = "CUSTOMER_ID"
+    DOCUMENT_TYPE_CHOICES = (
+        (RECEIPT, "Receipt"),
+        (CUSTOMER_ID, "Customer ID"),
+    )
     DRAFT = "DRAFT"
     CONFIRMED = "CONFIRMED"
     STATUS_CHOICES = (
@@ -35,10 +41,26 @@ class OCRDocument(models.Model):
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="ocr_documents")
     image = models.ImageField(upload_to="ocr/documents/")
+    document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPE_CHOICES, default=RECEIPT)
     raw_text = models.TextField(blank=True)
     extracted_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     extracted_date = models.DateField(null=True, blank=True)
     extracted_merchant = models.CharField(max_length=255, null=True, blank=True)
+    extracted_phone = models.CharField(max_length=50, null=True, blank=True)
+    linked_customer = models.ForeignKey(
+        "core.Customer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_documents",
+    )
+    linked_credit_sale = models.ForeignKey(
+        "core.CreditSale",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ocr_documents",
+    )
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=DRAFT)
     created_at = models.DateTimeField(auto_now_add=True)
 

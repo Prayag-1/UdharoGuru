@@ -173,6 +173,14 @@ class PrivateItemLoanSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"borrower": "Borrower must be connected to you."})
         if attrs.get("status") == PrivateItemLoan.RETURNED:
             raise serializers.ValidationError({"status": "Cannot create a returned item. Use return endpoint."})
+        lent_date = attrs.get("lent_date")
+        expected_return_date = attrs.get("expected_return_date")
+        reminder_interval_days = attrs.get("reminder_interval_days")
+
+        if expected_return_date and lent_date and expected_return_date < lent_date:
+            raise serializers.ValidationError({"expected_return_date": "Expected return date cannot be before lent date."})
+        if reminder_interval_days is not None and reminder_interval_days < 1:
+            raise serializers.ValidationError({"reminder_interval_days": "Reminder timer must be at least 1 day."})
         return attrs
 
 

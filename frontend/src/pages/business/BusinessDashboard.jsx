@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
 import { getDashboardData } from "../../api/dashboard";
-import { getCreditSales } from "../../api/business";
+import { getCreditSales, updateBusinessProfile } from "../../api/business";
 import {
   LineChart,
   Line,
@@ -102,6 +102,7 @@ export default function BusinessDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [allSales, setAllSales] = useState([]);
+  const [reminderSaving, setReminderSaving] = useState(false);
   
   // Track in-flight request to prevent duplicates
   const requestAbortRef = useRef(null);
@@ -221,7 +222,32 @@ export default function BusinessDashboard() {
   const salesByStatus = dashboard.sales_by_status || {};
   const recentSales = dashboard.recent_credit_sales || [];
   const recentPayments = dashboard.recent_payments || [];
+  const reminderSettings = dashboard.reminder_settings || { enabled: true, days_before_due: 3 };
+  const dueReminders = dashboard.due_reminders || [];
   const message = dashboard.message;
+
+  const handleReminderSettingChange = async (updates) => {
+    const nextSettings = {
+      enabled: reminderSettings.enabled,
+      days_before_due: reminderSettings.days_before_due,
+      ...updates,
+    };
+    setDashboard((prev) => ({
+      ...prev,
+      reminder_settings: nextSettings,
+    }));
+    setReminderSaving(true);
+    try {
+      const formData = new FormData();
+      formData.append("reminder_enabled", String(nextSettings.enabled));
+      formData.append("reminder_days_before_due", String(nextSettings.days_before_due));
+      await updateBusinessProfile(formData);
+    } catch {
+      setError("Failed to save reminder settings");
+    } finally {
+      setReminderSaving(false);
+    }
+  };
 
   if (message) {
     return (
@@ -250,12 +276,20 @@ export default function BusinessDashboard() {
           <h1 className="dashboard-title">Dashboard</h1>
           <p className="dashboard-subtitle">Business overview and key metrics</p>
         </div>
-        <button
-          className="dashboard-btn-primary"
-          onClick={() => navigate("/business/credit-sales/create")}
-        >
-          New Credit Sale
-        </button>
+        <div className="dashboard-header-buttons">
+          <button
+            className="dashboard-btn-primary"
+            onClick={() => navigate("/business/credit-sales/create")}
+          >
+            New Credit Sale
+          </button>
+          <button
+            className="dashboard-btn-secondary"
+            onClick={() => navigate("/business/payment-request")}
+          >
+            📤 Send Payment Request
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -311,6 +345,59 @@ export default function BusinessDashboard() {
             {salesByStatus.paid || 0}
           </div>
         </div>
+      </div>
+
+      <div className="reminder-card">
+        <div className="reminder-header">
+          <div>
+            <h2 className="reminder-title">Due Date Reminders</h2>
+            <p className="reminder-subtitle">Set the reminder window, then send WhatsApp reminders for unpaid sales nearing the due date.</p>
+          </div>
+          <div className="reminder-controls">
+            <label className="reminder-toggle">
+              <input
+                type="checkbox"
+                checked={!!reminderSettings.enabled}
+                onChange={(e) => handleReminderSettingChange({ enabled: e.target.checked })}
+              />
+              <span>Enabled</span>
+            </label>
+            <label className="reminder-days">
+              <span>Days before due</span>
+              <input
+                type="number"
+                min="0"
+                max="30"
+                value={reminderSettings.days_before_due ?? 3}
+                onChange={(e) => handleReminderSettingChange({ days_before_due: Number(e.target.value || 0) })}
+              />
+            </label>
+          </div>
+        </div>
+        {reminderSaving && <div className="reminder-saving">Saving reminder settings...</div>}
+        {dueReminders.length === 0 ? (
+          <div className="empty-state">No unpaid sales are currently due soon.</div>
+        ) : (
+          <div className="reminder-list">
+            {dueReminders.map((reminder) => (
+              <div key={reminder.id} className="reminder-row">
+                <div>
+                  <div className="reminder-customer">{reminder.customer_name}</div>
+                  <div className="reminder-meta">
+                    {reminder.invoice_number} · Due {new Date(reminder.due_date).toLocaleDateString()} · Rs. {Number(reminder.amount_due).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div className={`reminder-state ${reminder.state}`}>{reminder.state === "overdue" ? "Overdue" : "Due soon"}</div>
+                <button
+                  className="dashboard-btn-secondary"
+                  onClick={() => window.open(reminder.whatsapp_url, "_blank", "noopener,noreferrer")}
+                >
+                  WhatsApp
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Charts Section */}

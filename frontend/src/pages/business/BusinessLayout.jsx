@@ -17,6 +17,7 @@ export default function BusinessLayout() {
     { to: "/business/products", label: "Products", requiresApproval: true },
     { to: "/business/customers", label: "Customers", requiresApproval: true },
     { to: "/business/credit-sales", label: "Credit Sales", requiresApproval: true },
+    { to: "/business/income", label: "Income", requiresApproval: true },
     { to: "/business/payments", label: "Payments", requiresApproval: true },
     { to: "/business/ocr", label: "OCR", requiresApproval: true },
     { to: "/business/payment", label: "Payment", visible: showPayment },

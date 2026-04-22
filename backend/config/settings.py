@@ -13,9 +13,13 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -62,7 +66,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',      
 ]
 
 
@@ -183,12 +187,12 @@ SIMPLE_JWT = {
 # OTP_EXPIRY_MINUTES = int(os.getenv('OTP_EXPIRY_MINUTES', '10'))
 # OTP_MAX_ATTEMPTS = int(os.getenv('OTP_MAX_ATTEMPTS', '5'))
 
-# Google OAuth removed (no social login enabled)
+# Google OAuth removed for now to simplify authentication flow; can be re-added later if needed.
 
 # Stripe Configuration
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', 'sk_test_your_secret_key_here')
 STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY', 'pk_test_your_public_key_here')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', 'whsec_test_your_webhook_secret_here')
 
-# Business Account Activation Price (in cents: 500 NPR converted to USD equivalent ~5 USD)
-STRIPE_ACTIVATION_AMOUNT = 500  # $5 USD
+# Business Account Activation Price (in cents: 18000 NPR converted to USD equivalent ~138 USD)
+STRIPE_ACTIVATION_AMOUNT = 13800  # 138 USD (matches 18000 NPR mobile banking option)

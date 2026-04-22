@@ -1,0 +1,23 @@
+/* Business Payment Request Styles - extends from PaymentRequest.css */
+@import './PaymentRequest.css';
+
+.business-payment-card {
+  background: white;
+  border: 1px solid #d1d5e0;
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  transition: all 0.3s ease;
+}
+
+.business-payment-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+.business-payment-card h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f1419;
+  margin: 0 0 12px;
+}

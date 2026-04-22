@@ -15,6 +15,7 @@ from core.views import (
     TransactionViewSet,
     BusinessDashboardView,
 )
+from core.payment_request_views import PaymentRequestViewSet
 
 router = DefaultRouter()
 router.register(r"customers", CustomerViewSet, basename="customers")
@@ -22,6 +23,7 @@ router.register(r"transactions", TransactionViewSet, basename="transactions")
 router.register(r"products", ProductViewSet, basename="products")
 router.register(r"credit-sales", CreditSaleViewSet, basename="credit-sales")
 router.register(r"payments", PaymentViewSet, basename="payments")
+router.register(r"payment-requests", PaymentRequestViewSet, basename="payment-requests")
 
 urlpatterns = [
     path("admin/", admin.site.urls),

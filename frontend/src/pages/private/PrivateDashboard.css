@@ -567,6 +567,14 @@
   justify-content: flex-end;
 }
 
+.item-card-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .group-row {
   display: flex;
   align-items: center;

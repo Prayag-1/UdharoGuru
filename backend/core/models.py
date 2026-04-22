@@ -344,3 +344,112 @@ class Payment(models.Model):
             
             # Delete the payment record
             super().delete(*args, **kwargs)
+
+
+class PaymentRequest(models.Model):
+    """
+    Represents a payment request for both private and business accounts.
+    - Private: peer-to-peer payment requests
+    - Business: customer payment requests for invoices
+    """
+    import uuid
+    
+    PENDING = "PENDING"
+    PAID = "PAID"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    
+    STATUS_CHOICES = [
+        (PENDING, "Pending"),
+        (PAID, "Paid"),
+        (FAILED, "Failed"),
+        (CANCELLED, "Cancelled"),
+    ]
+    
+    REQUEST_TYPE_CHOICES = [
+        ("PRIVATE", "Private"),
+        ("BUSINESS", "Business"),
+    ]
+    
+    # Core fields
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sender = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.CASCADE,
+        related_name='sent_payment_requests',
+    )
+    receiver = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.CASCADE,
+        related_name='received_payment_requests',
+        null=True,
+        blank=True,
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name='payment_requests',
+        null=True,
+        blank=True,
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    description = models.TextField(blank=True)
+    request_type = models.CharField(
+        max_length=10,
+        choices=REQUEST_TYPE_CHOICES,
+        default="PRIVATE",
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default=PENDING,
+    )
+    
+    # Stripe integration
+    stripe_session_id = models.CharField(max_length=255, blank=True, db_index=True)
+    stripe_payment_intent_id = models.CharField(max_length=255, blank=True)
+    
+    # Related to credit sale (for business flow)
+    credit_sale = models.ForeignKey(
+        CreditSale,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payment_requests',
+    )
+    
+    # QR code and sharing
+    checkout_url = models.CharField(max_length=1024, blank=True)  # Stripe URLs can be long
+    qr_code_data = models.TextField(blank=True)  # Base64 encoded QR code image
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["sender", "-created_at"]),
+            models.Index(fields=["receiver", "-created_at"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["stripe_session_id"]),
+        ]
+    
+    def __str__(self):
+        if self.request_type == "BUSINESS":
+            return f"Business Payment Request: Rs. {self.amount} from {self.customer.name}"
+        else:
+            return f"Payment Request: Rs. {self.amount} to {self.receiver.email}"
+    
+    def is_expired(self):
+        from django.utils import timezone
+        if self.expires_at:
+            return timezone.now() > self.expires_at
+        return False
+    
+    def mark_as_paid(self):
+        """Mark payment request as paid."""
+        from django.utils import timezone
+        self.status = self.PAID
+        self.paid_at = timezone.now()
+        self.save(update_fields=['status', 'paid_at'])

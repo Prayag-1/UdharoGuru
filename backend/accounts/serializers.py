@@ -213,6 +213,8 @@ class BusinessProfileSerializer(serializers.ModelSerializer):
             "business_type",
             "logo",
             "pan_vat_number",
+            "reminder_enabled",
+            "reminder_days_before_due",
             "kyc_status",
             "payment_status",
             "created_at",

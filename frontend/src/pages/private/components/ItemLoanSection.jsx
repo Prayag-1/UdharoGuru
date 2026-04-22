@@ -60,6 +60,7 @@ export default function ItemLoanSection({ items, loading, error, onAddItem, onRe
                   key={loan.id}
                   loan={loan}
                   borrowerLabel={borrowerLabel(loan)}
+                  borrowerEmail={borrowerLookup?.[loan.borrower]?.email}
                   onReturn={onReturn}
                 />
               ))}

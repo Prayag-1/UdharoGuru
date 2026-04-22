@@ -203,20 +203,40 @@ class PrivateItemReminderDueView(APIView):
 
     def get(self, request):
         now = timezone.now()
+        today = timezone.localdate()
         loans = PrivateItemLoan.objects.filter(
             owner=request.user,
             status=PrivateItemLoan.ACTIVE,
             reminder_enabled=True,
-        )
+        ).select_related("borrower")
 
         due_items = []
         for loan in loans:
-            if loan.last_reminder_sent_at is None:
-                due_items.append(loan)
-                continue
-            next_due_at = loan.last_reminder_sent_at + timedelta(days=loan.reminder_interval_days)
-            if now >= next_due_at:
-                due_items.append(loan)
+            days_until_due = None
+            due_status = "NO_DUE_DATE"
+            should_include = False
+
+            if loan.expected_return_date:
+                days_until_due = (loan.expected_return_date - today).days
+                if days_until_due < 0:
+                    due_status = "OVERDUE"
+                    should_include = True
+                elif days_until_due <= loan.reminder_interval_days:
+                    due_status = "DUE_SOON"
+                    should_include = True
+                else:
+                    due_status = "SCHEDULED"
+            else:
+                due_status = "NO_DUE_DATE"
+                if loan.last_reminder_sent_at is None:
+                    should_include = True
+                else:
+                    next_due_at = loan.last_reminder_sent_at + timedelta(days=loan.reminder_interval_days)
+                    if now >= next_due_at:
+                        should_include = True
+
+            if should_include:
+                due_items.append((loan, due_status, days_until_due))
 
         data = [
             {
@@ -224,10 +244,14 @@ class PrivateItemReminderDueView(APIView):
                 "item_name": loan.item_name,
                 "owner_email": loan.owner.email,
                 "borrower_email": loan.borrower.email,
+                "borrower_name": loan.borrower.full_name or loan.borrower.email,
                 "expected_return_date": loan.expected_return_date,
+                "due_status": due_status,
+                "days_until_due": days_until_due,
                 "reminder_interval_days": loan.reminder_interval_days,
+                "last_reminder_sent_at": loan.last_reminder_sent_at,
             }
-            for loan in due_items
+            for loan, due_status, days_until_due in due_items
         ]
         return Response(data, status=status.HTTP_200_OK)
 

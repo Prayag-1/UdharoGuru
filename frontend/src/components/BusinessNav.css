@@ -1,10 +1,11 @@
 .business-nav {
   background: white;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #d1d5e0;
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
 }
 
 .nav-container {
@@ -15,7 +16,7 @@
 
 .nav-menu {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -29,26 +30,29 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 13px 18px;
   border: none;
   background: none;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  color: #64748b;
+  color: #6b7280;
   white-space: nowrap;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
+  position: relative;
   border-bottom: 3px solid transparent;
 }
 
 .nav-item:hover {
-  color: #0f172a;
-  background: #f8fafc;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
 }
 
-.nav-item:active {
-  color: #1e40af;
-  border-bottom-color: #1e40af;
+.nav-item:active,
+.nav-item.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .nav-icon {
@@ -67,7 +71,7 @@
 
 @media (max-width: 640px) {
   .nav-item {
-    padding: 12px 12px;
+    padding: 13px 14px;
   }
 
   .nav-icon {

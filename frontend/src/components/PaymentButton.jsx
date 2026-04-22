@@ -15,7 +15,7 @@ const PaymentButton = () => {
 
       // Call backend to create checkout session
       const response = await axios.post(
-        'http://localhost:8000/api/accounts/create-checkout-session/',
+        'http://localhost:8000/api/auth/create-checkout-session/',
         {},
         {
           headers: {

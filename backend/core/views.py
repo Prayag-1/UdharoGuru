@@ -1,3 +1,9 @@
+from datetime import timedelta
+from decimal import Decimal, InvalidOperation
+
+import re
+from urllib.parse import quote
+
 from django.contrib.auth import get_user_model
 from django.db.models import Sum, Count
 from django.db.models.functions import TruncMonth
@@ -392,10 +398,10 @@ class CreditSaleViewSet(viewsets.ModelViewSet):
             raise DRFValidationError({"amount": "Payment amount is required."})
         
         try:
-            amount = float(amount)
+            amount = Decimal(str(amount))
             if amount <= 0:
                 raise DRFValidationError({"amount": "Payment amount must be greater than zero."})
-        except (ValueError, TypeError):
+        except (InvalidOperation, ValueError, TypeError):
             raise DRFValidationError({"amount": "Invalid amount format."})
         
         sale.record_payment(amount)
@@ -481,10 +487,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Create a payment and update the credit sale."""
         profile = self._get_business()
-        customer = serializer.validated_data.get("customer")
         credit_sale = serializer.validated_data.get("credit_sale")
+        customer = serializer.validated_data.get("customer") or getattr(credit_sale, "customer", None)
 
         # Verify customer and sale belong to this business
+        if customer is None or credit_sale is None:
+            raise DRFValidationError({"credit_sale": "A valid credit sale is required."})
         if customer.business_id != profile.id:
             raise DRFValidationError({"customer": "Customer does not belong to this business."})
         if credit_sale.business_id != profile.id:
@@ -700,6 +708,51 @@ class BusinessDashboardView(APIView):
             business=profile,
             status=CreditSale.PAID
         ).count()
+
+        reminder_days = getattr(profile, "reminder_days_before_due", 3) or 3
+        reminder_enabled = getattr(profile, "reminder_enabled", True)
+        today = timezone.localdate()
+        reminder_cutoff = today + timedelta(days=reminder_days)
+        due_candidates = (
+            CreditSale.objects.filter(
+                business=profile,
+                amount_due__gt=0,
+                due_date__isnull=False,
+            )
+            .exclude(status=CreditSale.PAID)
+            .select_related("customer")
+            .order_by("due_date", "-created_at")
+        )
+
+        due_reminders = []
+        business_name = profile.business_name or request.user.full_name or request.user.email
+        for sale in due_candidates:
+            if sale.due_date > reminder_cutoff:
+                continue
+            customer_phone = re.sub(r"\D", "", getattr(sale.customer, "phone", "") or "")
+            if not customer_phone:
+                continue
+            state = "overdue" if sale.due_date < today else "due_soon"
+            due_date_display = sale.due_date.strftime("%Y-%m-%d")
+            amount_display = f"{sale.amount_due:,.2f}"
+            message = (
+                f"Hello {sale.customer.name}, this is a reminder from {business_name}. "
+                f"Invoice {sale.invoice_number} still has Rs. {amount_display} left to pay. "
+                f"Due date: {due_date_display}. Please settle it as soon as possible."
+            )
+            due_reminders.append(
+                {
+                    "id": sale.id,
+                    "invoice_number": sale.invoice_number,
+                    "customer_name": sale.customer.name,
+                    "customer_phone": sale.customer.phone,
+                    "amount_due": float(sale.amount_due),
+                    "due_date": sale.due_date.isoformat(),
+                    "status": sale.status,
+                    "state": state,
+                    "whatsapp_url": f"https://wa.me/{customer_phone}?text={quote(message)}",
+                }
+            )
         
         return Response({
             "metrics": {
@@ -715,5 +768,10 @@ class BusinessDashboardView(APIView):
             },
             "recent_credit_sales": recent_sales_data,
             "recent_payments": recent_payments_data,
+            "reminder_settings": {
+                "enabled": reminder_enabled,
+                "days_before_due": reminder_days,
+            },
+            "due_reminders": due_reminders,
             "message": "Complete your business profile to unlock invoices and richer business details." if profile_incomplete else "",
         })

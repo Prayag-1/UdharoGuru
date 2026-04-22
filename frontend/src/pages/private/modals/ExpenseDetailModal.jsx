@@ -26,7 +26,7 @@ const parseSplitMeta = (note, amount) => {
   return { total: null, friendPercent };
 };
 
-export default function ExpenseDetailModal({ open, onClose, expense }) {
+export default function ExpenseDetailModal({ open, onClose, expense, onSettle, settling = false }) {
   if (!open || !expense) return null;
   const isLent = expense.transaction_type === "LENT";
   const { total, friendPercent } = parseSplitMeta(expense.note, Number(expense.amount));
@@ -36,6 +36,17 @@ export default function ExpenseDetailModal({ open, onClose, expense }) {
   const pctFriend = Math.min(100, Math.max(0, friendPercent || (computedTotal ? (friendShare / computedTotal) * 100 : 0)));
   const pctYou = Math.max(0, 100 - pctFriend);
   const yourPercent = pctYou;
+
+  const handleSettleClick = () => {
+    if (onSettle) {
+      onSettle({
+        expense,
+        personName: expense.person_name,
+        amount: friendShare,
+        direction: isLent ? "owed_to_you" : "you_owe",
+      });
+    }
+  };
 
   return (
     <div className="modal-overlay">
@@ -91,6 +102,22 @@ export default function ExpenseDetailModal({ open, onClose, expense }) {
                 </div>
               </div>
             </>
+          )}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button className="button secondary" type="button" onClick={onClose} disabled={settling}>
+            Close
+          </button>
+          {onSettle && (
+            <button
+              className="button"
+              type="button"
+              onClick={handleSettleClick}
+              disabled={settling}
+            >
+              {settling ? "Recording..." : `Record settlement with ${expense.person_name}`}
+            </button>
           )}
         </div>
       </div>

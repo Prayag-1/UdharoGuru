@@ -134,12 +134,13 @@ export default function CreditSalesPage() {
             </div>
           ) : (
             <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 1fr", gap: 8, padding: "10px 14px", background: "#f8fafc", fontWeight: 800, color: "#0f172a", fontSize: 13 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 1fr 1fr", gap: 8, padding: "10px 14px", background: "#f8fafc", fontWeight: 800, color: "#0f172a", fontSize: 13 }}>
                 <div>Invoice</div>
                 <div>Customer</div>
                 <div>Total</div>
                 <div>Paid</div>
                 <div>Due</div>
+                <div>Due Date</div>
                 <div style={{ textAlign: "right" }}>Status</div>
               </div>
               {sales.map((sale) => {
@@ -150,7 +151,7 @@ export default function CreditSalesPage() {
                     onClick={() => navigate(`/business/credit-sales/${sale.id}`)}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 1fr",
+                      gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr 1fr 1fr",
                       gap: 8,
                       padding: "12px 14px",
                       borderTop: "1px solid #e2e8f0",
@@ -169,6 +170,9 @@ export default function CreditSalesPage() {
                     <div style={{ color: "#0f172a" }}>Rs. {formatMoney(sale.total_amount)}</div>
                     <div style={{ color: "#059669", fontWeight: 700 }}>Rs. {formatMoney(sale.amount_paid)}</div>
                     <div style={{ color: "#d97706", fontWeight: 700 }}>Rs. {formatMoney(sale.amount_due)}</div>
+                    <div style={{ color: "#0f172a", fontWeight: 700 }}>
+                      {sale.due_date ? new Date(sale.due_date).toLocaleDateString() : "No due date"}
+                    </div>
                     <div style={{ textAlign: "right" }}>
                       <span
                         style={{

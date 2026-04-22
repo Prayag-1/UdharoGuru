@@ -189,6 +189,142 @@ def extract_merchant(text):
     return None
 
 
+def extract_phone_number(text):
+    if not text:
+        return None
+    matches = re.findall(r"(?:\+?977[-\s]?)?(9\d{9})", text)
+    if matches:
+        return matches[0]
+    return None
+
+
+def extract_customer_name_from_id(text):
+    if not text:
+        return None
+    parsed = parse_customer_id_text(text)
+    return parsed.get("customer_name") or None
+
+
+def _id_candidate_lines(text):
+    lines = [normalize_whitespace(line) for line in text.splitlines() if normalize_whitespace(line)]
+    cleaned = []
+    for line in lines:
+        normalized = re.sub(r"[^\w\s,:/-]", " ", line)
+        normalized = normalize_whitespace(normalized)
+        if normalized:
+            cleaned.append(normalized)
+    return cleaned
+
+
+def _clean_name_tokens(line):
+    tokens = re.findall(r"[A-Za-z]{2,}", line or "")
+    cleaned = []
+    for token in tokens:
+        lowered = token.lower()
+        if lowered in {
+            "id",
+            "card",
+            "number",
+            "dob",
+            "sex",
+            "hgt",
+            "wgt",
+            "eyes",
+            "iss",
+            "exp",
+            "name",
+            "street",
+            "city",
+        }:
+            continue
+        if token.isupper() or token[0].isupper():
+            cleaned.append(token.upper())
+    return cleaned
+
+
+def extract_id_number(text):
+    if not text:
+        return None
+    lines = _id_candidate_lines(text)
+    patterns = (
+        r"\bNUMBER[:\s#-]*([A-Z0-9/-]{4,})\b",
+        r"\bID\s*NO[:\s#-]*([A-Z0-9/-]{4,})\b",
+        r"\bNO[:\s#-]*([A-Z0-9/-]{4,})\b",
+    )
+    for line in lines:
+        for pattern in patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    return None
+
+
+def extract_dob_from_id(text):
+    if not text:
+        return None
+    lines = _id_candidate_lines(text)
+    for line in lines:
+        match = re.search(r"\bDOB[:\s-]*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4})\b", line, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def extract_address_from_id(text):
+    if not text:
+        return None
+    lines = _id_candidate_lines(text)
+    address_keywords = ("street", "city", "address", "ward", "district", "province")
+    for line in lines:
+        lowered = line.lower()
+        if any(keyword in lowered for keyword in address_keywords):
+            return line[:255]
+    return None
+
+
+def extract_name_from_id(text):
+    if not text:
+        return None
+
+    lines = _id_candidate_lines(text)
+
+    for idx, line in enumerate(lines):
+        lowered = line.lower()
+        if "name" in lowered and "id name" not in lowered:
+            after = re.split(r"name[:\s-]*", line, maxsplit=1, flags=re.IGNORECASE)[-1]
+            tokens = _clean_name_tokens(after)
+            if len(tokens) >= 2:
+                return " ".join(tokens[:3])
+
+        tokens = _clean_name_tokens(line)
+        if not tokens:
+            continue
+
+        if len(tokens) >= 2 and not re.search(r"\d", line):
+            return " ".join(tokens[:3])
+
+        if len(tokens) == 1 and idx + 1 < len(lines):
+            next_tokens = _clean_name_tokens(lines[idx + 1])
+            if len(next_tokens) >= 1:
+                return " ".join((tokens + next_tokens)[:3])
+
+    return None
+
+
+def parse_customer_id_text(text):
+    customer_name = extract_name_from_id(text) or ""
+    address = extract_address_from_id(text) or ""
+    id_number = extract_id_number(text) or ""
+    dob = extract_dob_from_id(text) or ""
+    return {
+        "customer_name": customer_name,
+        "phone": extract_phone_number(text) or "",
+        "address": address,
+        "id_number": id_number,
+        "dob": dob,
+    }
+
+
 def detect_bill_type(text):
     upper_text = (text or "").upper()
     restaurant_hits = sum(keyword in upper_text for keyword in RESTAURANT_KEYWORDS)

@@ -187,6 +187,8 @@ class BusinessProfile(models.Model):
     business_type = models.CharField(max_length=100)
     logo = models.ImageField(upload_to="business_logos/", null=True, blank=True)
     pan_vat_number = models.CharField(max_length=100)
+    reminder_enabled = models.BooleanField(default=True)
+    reminder_days_before_due = models.PositiveIntegerField(default=3)
     kyc_status = models.CharField(max_length=10, choices=KYC_STATUS, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -207,6 +209,8 @@ def build_business_profile_defaults(user):
         "address": "",
         "business_type": "",
         "pan_vat_number": "",
+        "reminder_enabled": True,
+        "reminder_days_before_due": 3,
     }
 
 

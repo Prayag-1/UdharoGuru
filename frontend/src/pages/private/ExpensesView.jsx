@@ -4,6 +4,7 @@ import { useOutletContext } from "react-router-dom";
 import { createPrivateTransaction, getPrivateTransactions } from "../../api/private";
 import AddExpenseModal from "./modals/AddExpenseModal";
 import ExpenseDetailModal from "./modals/ExpenseDetailModal";
+import QuickSettleModal from "./modals/QuickSettleModal";
 import SettleUpModal from "./modals/SettleUpModal";
 import "./PrivateDashboard.css";
 
@@ -42,8 +43,10 @@ export default function ExpensesView() {
   const [showAdd, setShowAdd] = useState(false);
   const [showSettle, setShowSettle] = useState(false);
   const [detailTx, setDetailTx] = useState(null);
+  const [quickSettleExpense, setQuickSettleExpense] = useState(null);
   const [savingExpense, setSavingExpense] = useState(false);
   const [savingSettle, setSavingSettle] = useState(false);
+  const [savingQuickSettle, setSavingQuickSettle] = useState(false);
   const [prefillExpense, setPrefillExpense] = useState(null);
 
   const normalizedConnections = useMemo(() => connections.map(normalizeConnection), [connections]);
@@ -162,6 +165,26 @@ export default function ExpensesView() {
     }
   };
 
+  const handleQuickSettle = async ({ personName, amount, direction }) => {
+    setSavingQuickSettle(true);
+    try {
+      const transactionType = direction === "you_owe" ? "LENT" : "BORROWED";
+      const note = direction === "you_owe" ? "Settlement paid" : "Settlement received";
+      await createPrivateTransaction({
+        person_name: personName,
+        amount,
+        transaction_type: transactionType,
+        transaction_date: new Date().toISOString().slice(0, 10),
+        note,
+      });
+      setQuickSettleExpense(null);
+      setDetailTx(null);
+      await refreshTransactions();
+    } finally {
+      setSavingQuickSettle(false);
+    }
+  };
+
   return (
     <div className="dashboard-shell">
       <div className="section-heading" style={{ marginBottom: 8 }}>
@@ -244,6 +267,8 @@ export default function ExpensesView() {
         open={Boolean(detailTx)}
         onClose={() => setDetailTx(null)}
         expense={detailTx}
+        onSettle={(settlement) => setQuickSettleExpense(settlement.expense || detailTx)}
+        settling={savingQuickSettle}
         onSplit={() => {
           if (!detailTx) return;
           setPrefillExpense({
@@ -253,6 +278,14 @@ export default function ExpensesView() {
           });
           setShowAdd(true);
         }}
+      />
+
+      <QuickSettleModal
+        open={Boolean(quickSettleExpense)}
+        onClose={() => setQuickSettleExpense(null)}
+        expense={quickSettleExpense}
+        onSubmit={handleQuickSettle}
+        submitting={savingQuickSettle}
       />
     </div>
   );

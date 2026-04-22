@@ -19,6 +19,8 @@ export const createPrivateItem = (payload) => api.post("private/items/", payload
 export const returnPrivateItem = (id) =>
   api.post(`private/items/${id}/return/`, { status: "RETURNED" });
 
+export const getPrivateItemReminders = () => api.get("private/items/reminder-due/");
+
 export const getPrivateConnections = () => api.get("private/connections/");
 
 export const getPrivateFriends = () => api.get("private/friends/");
