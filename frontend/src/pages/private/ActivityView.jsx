@@ -255,7 +255,7 @@ export default function ActivityView() {
             {debtComparison.length === 0 ? (
               <div className="empty-state">No active debt insights yet.</div>
             ) : (
-              <div style={{ width: "100%", height: 240 }}>
+              <div style={{ width: "100%", height: "auto", minHeight: 200, maxHeight: 280 }}>
                 <ResponsiveContainer>
                   <PieChart>
                     <Tooltip content={<DebtComparisonTooltip />} />
@@ -334,17 +334,47 @@ export default function ActivityView() {
         ) : filteredFeed.length === 0 ? (
           <div className="empty-state">No activity matches this filter yet.</div>
         ) : (
-          <div className="list">
-            {filteredFeed.slice(0, 24).map((entry) => (
-              <div key={entry.id} className="row-card activity-row">
-                <div>
-                  <div style={{ fontWeight: 700 }}>{entry.title}</div>
-                  <div className="muted" style={{ fontSize: 13 }}>{entry.description}</div>
+          <div>
+            {(() => {
+              // Group activity by kind for better visual organization
+              const grouped = {};
+              filteredFeed.forEach((entry) => {
+                if (!grouped[entry.kind]) grouped[entry.kind] = [];
+                grouped[entry.kind].push(entry);
+              });
+
+              const kindOrder = ["Reminders", "Settlements", "All"];
+              const orderedKinds = kindOrder.filter((k) => grouped[k]);
+
+              return orderedKinds.map((kind) => (
+                <div key={kind} style={{ marginBottom: 16 }}>
+                  {orderedKinds.length > 1 && (
+                    <div className="activity-group-header">
+                      <div className="activity-group-label">
+                        {kind === "Reminders" && "🔔 Reminders"}
+                        {kind === "Settlements" && "✅ Settlements"}
+                        {kind === "All" && "💰 Activity"}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {grouped[kind].length} item{grouped[kind].length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                  )}
+                  <div className="list">
+                    {grouped[kind].slice(0, 12).map((entry) => (
+                      <div key={entry.id} className="row-card activity-row">
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{entry.title}</div>
+                          <div className="muted" style={{ fontSize: 13 }}>{entry.description}</div>
+                        </div>
+                        <div className="muted" style={{ fontSize: 13 }}>{entry.meta}</div>
+                        <div className="pill">{formatDateTime(entry.timestamp)}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="muted" style={{ fontSize: 13 }}>{entry.meta}</div>
-                <div className="pill">{formatDateTime(entry.timestamp)}</div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         )}
       </div>

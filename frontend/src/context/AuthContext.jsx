@@ -15,7 +15,7 @@ const removeTokens = () => {
 
 export const resolveHomeRoute = (user) => {
   if (!user) return "/auth";
-  if (user.account_type === "PRIVATE") return "/private/dashboard";
+  if (user.account_type === "PRIVATE") return "/private/friends";
   if (user.account_type === "BUSINESS") {
     const status = user.business_status;
     if (status === "APPROVED") return "/business/dashboard";

@@ -81,7 +81,7 @@ export const getConnectionBalanceMap = (connections, transactions) => {
   });
 
   return balances;
-};
+ };
 
 export const getConnectionTransactionMap = (connections, transactions) => {
   const map = {};

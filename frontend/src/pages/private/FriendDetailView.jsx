@@ -65,6 +65,9 @@ export default function FriendDetailView() {
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState(null);
 
+  // Tab state for organized content
+  const [selectedTab, setSelectedTab] = useState("expenses");
+
   // Load all data on mount
   useEffect(() => {
     let active = true;
@@ -317,6 +320,246 @@ export default function FriendDetailView() {
     return "all settled up";
   };
 
+  // Helper to determine reminder status badge
+  const getReminderStatusBadge = (reminder) => {
+    const daysUntilDue = reminder.expected_return_date
+      ? Math.ceil((new Date(reminder.expected_return_date) - new Date()) / (1000 * 60 * 60 * 24))
+      : null;
+    
+    if (reminder.due_status === "OVERDUE") {
+      return { label: "Overdue", className: "reminder-badge-overdue" };
+    }
+    if (daysUntilDue !== null && daysUntilDue <= 3 && daysUntilDue > 0) {
+      return { label: `Due in ${daysUntilDue}d`, className: "reminder-badge-warning" };
+    }
+    if (daysUntilDue !== null && daysUntilDue > 0) {
+      return { label: `Due in ${daysUntilDue}d`, className: "reminder-badge-info" };
+    }
+    return { label: "Pending", className: "reminder-badge-default" };
+  };
+
+  // Tab content renderers
+  const renderExpensesTab = () => (
+    <div className="section-card">
+      <div className="section-heading">
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Expense history</div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Record of all money movements between you two
+          </div>
+        </div>
+      </div>
+      {friendTransactions.length === 0 ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>No expenses yet</div>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            When you split costs or lend money, it will appear here.
+          </div>
+          <button 
+            className="button secondary sm" 
+            type="button" 
+            onClick={() => setShowExpenseModal(true)}
+          >
+            Record first expense
+          </button>
+        </div>
+      ) : (
+        <div className="list">
+          {friendTransactions.map((tx) => {
+            const isLent = tx.transaction_type === "LENT";
+            return (
+              <div key={tx.id} className="row-card detail-row">
+                <div>
+                  <div style={{ fontWeight: 700 }}>{tx.note || "Expense"}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    {formatShortDate(tx.transaction_date)}
+                  </div>
+                </div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  {isLent ? "You lent" : "You borrowed"}
+                </div>
+                <div className={`currency ${isLent ? "positive" : "negative"}`}>
+                  {formatCurrency(tx.amount)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderItemsTab = () => {
+    const friendLabel = connectionDisplayName(selectedFriend);
+    return (
+      <div>
+        {activeItems.length > 0 && (
+          <div className="section-card">
+            <div className="section-heading">
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Lent items</div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  Items currently with {friendLabel}
+                </div>
+              </div>
+            </div>
+            <div className="stack compact-stack">
+              {activeItems.map((loan) => (
+                <ActiveItemCard
+                  key={loan.id}
+                  loan={loan}
+                  borrowerLabel={friendLabel}
+                  borrowerEmail={selectedFriend.email}
+                  onReturn={handleReturnItem}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {returnedItems.length > 0 && (
+          <div className="section-card">
+            <div className="section-heading">
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Returned items</div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  Items successfully returned by {friendLabel}
+                </div>
+              </div>
+            </div>
+            <div className="stack compact-stack">
+              {returnedItems.map((loan) => (
+                <ReturnedItemCard
+                  key={loan.id}
+                  loan={loan}
+                  borrowerLabel={friendLabel}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {friendItems.length === 0 && (
+          <div className="section-card">
+            <div className="empty-state">
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>No item loans</div>
+              <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                Keep track of items lent to this friend by recording them here.
+              </div>
+              <button 
+                className="button secondary sm" 
+                type="button" 
+                onClick={() => setShowItemModal(true)}
+              >
+                Record first item
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderRemindersTab = () => (
+    <div>
+      {dueReminders.length === 0 ? (
+        <div className="section-card">
+          <div className="empty-state">
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>No pending returns</div>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+              All items have been returned or you haven't lent anything yet.
+            </div>
+            <button 
+              className="button secondary sm" 
+              type="button" 
+              onClick={() => setShowItemModal(true)}
+            >
+              Lend an item
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="section-card">
+          <div className="section-heading">
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>Pending returns</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                Items awaiting return with reminder status
+              </div>
+            </div>
+            <div className="pill" style={{ background: "#fee2e2", color: "#b91c1c", borderColor: "#fca5a5" }}>
+              {dueReminders.length} pending
+            </div>
+          </div>
+          <div className="list">
+            {dueReminders.map((item) => {
+              const badge = getReminderStatusBadge(item);
+              const daysUntilDue = item.expected_return_date
+                ? Math.ceil((new Date(item.expected_return_date) - new Date()) / (1000 * 60 * 60 * 24))
+                : null;
+              const isOverdue = item.due_status === "OVERDUE";
+              
+              return (
+                <div 
+                  key={item.id} 
+                  className={`row-card detail-row reminder-row ${isOverdue ? "reminder-row-overdue" : ""}`}
+                  style={isOverdue ? { borderColor: "#fca5a5", background: "#fffbfb" } : {}}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, color: isOverdue ? "#b91c1c" : "var(--text)" }}>
+                      {item.item_name}
+                    </div>
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      Expected back {formatShortDate(item.expected_return_date, { year: "numeric" }) || "date not set"}
+                      {daysUntilDue && !isOverdue && ` (${daysUntilDue}d remaining)`}
+                      {isOverdue && daysUntilDue && ` • ${Math.abs(daysUntilDue)}d overdue`}
+                    </div>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Remind every {item.reminder_interval_days}d
+                  </div>
+                  <div className={`reminder-badge ${badge.className}`}>{badge.label}</div>
+                  <a
+                    className="button secondary sm"
+                    href={buildGmailLink({
+                      to: item.borrower_email,
+                      subject: `Return reminder for ${item.item_name}`,
+                      body: `Hello,\n\nThis is a reminder to return ${item.item_name}.\n\nThanks.`,
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Send return reminder via Gmail"
+                  >
+                    Send
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderChatTab = () => {
+    const friendLabel = connectionDisplayName(selectedFriend);
+    return (
+      <ChatPanel
+        title={`Chat with ${friendLabel}`}
+        subtitle="Direct messages linked to your balance and items."
+        loading={chatLoading}
+        messages={chatMessages}
+        inputValue={chatInput}
+        onInputChange={setChatInput}
+        onSend={handleSendMessage}
+        sending={chatSending}
+        currentUserEmail={user?.email}
+        error={chatError}
+        emptyMessage={`Start a conversation with ${friendLabel} about your balance, items, or anything else.`}
+      />
+    );
+  };
+
   // Guard: friend not found
   if (!loading && !selectedFriend) {
     return (
@@ -354,212 +597,176 @@ export default function FriendDetailView() {
     );
   }
 
+  // Define friend display name early for use in all tabs
   const friendName = connectionDisplayName(selectedFriend);
+
+  // Build status description
+  const statusDescription = () => {
+    if (friendBalance > 0) {
+      return `${friendName} owes you ${formatCurrency(friendBalance)}`;
+    } else if (friendBalance < 0) {
+      return `You owe ${friendName} ${formatCurrency(Math.abs(friendBalance))}`;
+    } else {
+      return "All settled up";
+    }
+  };
+
+  // Count urgent reminders
+  const overdueReminders = dueReminders.filter(r => r.due_status === "OVERDUE");
+  const dueSoon = dueReminders.filter(r => {
+    const daysUntilDue = r.expected_return_date
+      ? Math.ceil((new Date(r.expected_return_date) - new Date()) / (1000 * 60 * 60 * 24))
+      : null;
+    return daysUntilDue !== null && daysUntilDue <= 3 && daysUntilDue > 0;
+  });
+
+  // Get highest priority urgency signal (only one at a time)
+  const getUrgencySignal = () => {
+    if (overdueReminders.length > 0) {
+      return {
+        label: `⚠ ${overdueReminders.length} overdue item${overdueReminders.length === 1 ? "" : "s"}`,
+        background: "#fee2e2",
+        color: "#b91c1c",
+      };
+    }
+    if (dueSoon.length > 0) {
+      return {
+        label: `⏰ ${dueSoon.length} due within 3 days`,
+        background: "#fef3c7",
+        color: "#b45309",
+      };
+    }
+    if (activeItems.length > 0) {
+      return {
+        label: `📦 ${activeItems.length} active item${activeItems.length === 1 ? "" : "s"}`,
+        background: "#dbeafe",
+        color: "#1e40af",
+      };
+    }
+    return null;
+  };
 
   return (
     <div className="dashboard-shell">
-      {/* Header with back button and actions */}
-      <div className="section-card">
-        <div className="section-heading friend-detail-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <button
-              className="button secondary"
-              type="button"
-              onClick={() => navigate("/private/friends")}
-              title="Back to friends list"
-            >
-              ← Back
-            </button>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 900 }}>{friendName}</div>
-              <div className="muted" style={{ fontSize: 13 }}>
-                {selectedFriend.email || "No email on record"}
-              </div>
+      {/* Enhanced header with friend info and primary actions */}
+      <div className="section-card friend-detail-card">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
+          <button
+            className="button secondary"
+            type="button"
+            onClick={() => navigate("/private/friends")}
+            title="Back to friends list"
+            aria-label="Back to friends list"
+            style={{ flexShrink: 0 }}
+          >
+            ← Back
+          </button>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 22, fontWeight: 900 }}>{friendName}</div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              {selectedFriend?.email || "No email on record"}
             </div>
           </div>
-          <div className="friend-detail-actions">
-            <button className="button secondary sm" type="button" onClick={() => setShowExpenseModal(true)}>
-              Add expense
-            </button>
-            <button className="button secondary sm" type="button" onClick={() => setShowItemModal(true)}>
-              Lend item
-            </button>
-            <button className="button secondary sm" type="button" onClick={() => setShowSettleModal(true)}>
-              Settle up
-            </button>
-            <button
-              className="button sm"
-              type="button"
-              disabled={!selectedReminderLink}
-              onClick={() => window.open(selectedReminderLink, "_blank", "noopener,noreferrer")}
-            >
-              Send reminder
-            </button>
-          </div>
         </div>
-      </div>
 
-      {/* Balance summary cards */}
-      <div className="grid-3">
-        <div className="summary-card">
-          <div className="card-title">Current balance</div>
-          <div className={`currency ${friendBalance > 0 ? "positive" : friendBalance < 0 ? "negative" : "primary"}`} style={{ marginTop: 6 }}>
-            {formatCurrency(friendBalance)}
+        {/* Clear balance and status section */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, alignItems: "center" }}>
+          <div>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>BALANCE</div>
+            <div className={`currency ${friendBalance > 0 ? "positive" : friendBalance < 0 ? "negative" : "primary"}`} style={{ marginBottom: 8 }}>
+              {formatCurrency(friendBalance)}
+            </div>
+            <div style={{ fontSize: 13, color: friendBalance !== 0 ? (friendBalance > 0 ? "#10b981" : "#ef4444") : "var(--muted)" }}>
+              {statusDescription()}
+            </div>
           </div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-            {renderBalanceLabel(friendBalance)}
-          </div>
+
+          {/* Single highest-priority urgency indicator */}
+          {(() => {
+            const signal = getUrgencySignal();
+            return signal && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ padding: "8px 12px", background: signal.background, borderRadius: "6px", fontSize: 12 }}>
+                  <span style={{ fontWeight: 600, color: signal.color }}>
+                    {signal.label}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
-        <div className="summary-card">
-          <div className="card-title">Expense history</div>
-          <div style={{ fontWeight: 800, fontSize: 22, marginTop: 6 }}>
-            {friendTransactions.length}
-          </div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-            Money movements recorded
-          </div>
-        </div>
-        <div className="summary-card">
-          <div className="card-title">Active item loans</div>
-          <div style={{ fontWeight: 800, fontSize: 22, marginTop: 6 }}>
-            {activeItems.length}
-          </div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
-            {dueReminders.length} pending return{dueReminders.length === 1 ? "" : "s"}
-          </div>
+
+        {/* Action buttons - prioritized hierarchy */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+          <button
+            className="button"
+            type="button"
+            disabled={!selectedReminderLink}
+            onClick={() => window.open(selectedReminderLink, "_blank", "noopener,noreferrer")}
+            aria-label={`Send balance reminder to ${friendName}`}
+            title="Send reminder via email"
+            style={{ fontWeight: 600 }}
+          >
+            Send reminder
+          </button>
+          <button
+            className="button"
+            type="button"
+            onClick={() => setShowSettleModal(true)}
+            aria-label={`Settle up with ${friendName}`}
+            title="Record a settlement"
+            style={{ fontWeight: 600 }}
+          >
+            Settle up
+          </button>
+          <button 
+            className="button secondary sm" 
+            type="button" 
+            onClick={() => setShowExpenseModal(true)}
+            aria-label={`Add expense with ${friendName}`}
+          >
+            + Expense
+          </button>
+          <button 
+            className="button secondary sm" 
+            type="button" 
+            onClick={() => setShowItemModal(true)}
+            aria-label={`Lend item to ${friendName}`}
+          >
+            + Item
+          </button>
         </div>
       </div>
 
       {actionError && <div className="error-text" style={{ marginBottom: 16 }}>{actionError}</div>}
 
-      {/* Expense history section */}
-      <div className="section-card">
-        <div className="section-heading">
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>Recent expenses</div>
-            <div className="muted" style={{ fontSize: 13 }}>
-              Financial transactions between you two
-            </div>
-          </div>
-        </div>
-        {friendTransactions.length === 0 ? (
-          <div className="empty-state">No recorded expenses with this friend yet.</div>
-        ) : (
-          <div className="list">
-            {friendTransactions.slice(0, 8).map((tx) => {
-              const isLent = tx.transaction_type === "LENT";
-              return (
-                <div key={tx.id} className="row-card detail-row">
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{tx.note || "Expense"}</div>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      {formatShortDate(tx.transaction_date)}
-                    </div>
-                  </div>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    {isLent ? "You lent" : "You borrowed"}
-                  </div>
-                  <div className={`currency ${isLent ? "positive" : "negative"}`}>
-                    {formatCurrency(tx.amount)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Item lending and reminders side-by-side */}
-      <div className="grid-2">
-        <div className="section-card">
-          <div className="section-heading">
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Item loans</div>
-              <div className="muted" style={{ fontSize: 13 }}>
-                Items you've lent that are tracked
-              </div>
-            </div>
-          </div>
-          {friendItems.length === 0 ? (
-            <div className="empty-state">No item loans with this friend yet.</div>
-          ) : (
-            <div className="stack compact-stack">
-              {activeItems.map((loan) => (
-                <ActiveItemCard
-                  key={loan.id}
-                  loan={loan}
-                  borrowerLabel={friendName}
-                  borrowerEmail={selectedFriend.email}
-                  onReturn={handleReturnItem}
-                />
-              ))}
-              {returnedItems.map((loan) => (
-                <ReturnedItemCard
-                  key={loan.id}
-                  loan={loan}
-                  borrowerLabel={friendName}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="section-card">
-          <div className="section-heading">
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Return reminders</div>
-              <div className="muted" style={{ fontSize: 13 }}>
-                Pending items awaiting return
-              </div>
-            </div>
-          </div>
-          {dueReminders.length === 0 ? (
-            <div className="empty-state">No active return reminders for this friend.</div>
-          ) : (
-            <div className="list">
-              {dueReminders.map((item) => (
-                <div key={item.id} className="row-card detail-row">
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{item.item_name}</div>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      Expected {formatShortDate(item.expected_return_date, { year: "numeric" }) || "return date not set"}
-                    </div>
-                  </div>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    Timer {item.reminder_interval_days}d
-                  </div>
-                  <a
-                    className="button secondary sm"
-                    href={buildGmailLink({
-                      to: item.borrower_email,
-                      subject: `Return reminder for ${item.item_name}`,
-                      body: `Hello,\n\nThis is a reminder to return ${item.item_name}.\n\nThanks.`,
-                    })}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Email
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Tab navigation */}
+      <div className="section-card friend-detail-tabs">
+        <div className="tab-control">
+          {["expenses", "items", "reminders", "chat"].map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              className={`tab-button ${selectedTab === tab ? "tab-active" : ""}`}
+              onClick={() => setSelectedTab(tab)}
+              title={`View ${tab}`}
+            >
+              {tab === "expenses" && "Expenses"}
+              {tab === "items" && "Items"}
+              {tab === "reminders" && `Reminders${dueReminders.length > 0 ? ` (${dueReminders.length})` : ""}`}
+              {tab === "chat" && "Chat"}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Chat panel */}
-      <ChatPanel
-        title={`Chat with ${friendName}`}
-        subtitle="Direct messages stay connected to the balance relationship."
-        loading={chatLoading}
-        messages={chatMessages}
-        inputValue={chatInput}
-        onInputChange={setChatInput}
-        onSend={handleSendMessage}
-        sending={chatSending}
-        currentUserEmail={user?.email}
-        error={chatError}
-      />
+      {/* Tab content */}
+      <div className="tab-content">
+        {selectedTab === "expenses" && renderExpensesTab()}
+        {selectedTab === "items" && renderItemsTab()}
+        {selectedTab === "reminders" && renderRemindersTab()}
+        {selectedTab === "chat" && renderChatTab()}
+      </div>
 
       {/* Modals */}
       <AddExpenseModal

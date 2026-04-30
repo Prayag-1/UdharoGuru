@@ -359,6 +359,13 @@
   background: #f0f4fb;
 }
 
+.friend-detail-card {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.03), rgba(59, 130, 246, 0.06));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
 .card-title {
   font-weight: 700;
   font-size: 14px;
@@ -1003,6 +1010,121 @@
   gap: 8px;
 }
 
+/* Tab control styles */
+.tab-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+
+.tab-button {
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  position: relative;
+  transition: color 160ms ease, background 160ms ease;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.tab-button:hover {
+  color: var(--text);
+  background: var(--bg-soft);
+}
+
+.tab-button.tab-active {
+  color: var(--accent);
+  border-bottom: 3px solid var(--accent);
+  margin-bottom: -2px;
+}
+
+.friend-detail-tabs {
+  padding: 0 !important;
+  border: none;
+  margin-bottom: 0 !important;
+  background: transparent;
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Reminder-specific styles */
+.reminder-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reminder-badge-overdue {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.reminder-badge-warning {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.reminder-badge-info {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.reminder-badge-default {
+  background: var(--badge-bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.reminder-row {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 0.8fr) auto !important;
+}
+
+.reminder-row-overdue {
+  border-color: #fca5a5 !important;
+  background: linear-gradient(135deg, #fffbfb, #fffaf5) !important;
+}
+
+.reminder-row-overdue:hover {
+  box-shadow: 0 6px 14px rgba(185, 28, 28, 0.12) !important;
+}
+
+/* Activity grouping styles */
+.activity-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
+.activity-group-label {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .friends-header {
   align-items: flex-start;
 }
@@ -1237,6 +1359,7 @@
     grid-template-columns: 1fr;
   }
   .grid-2,
+  .grid-3,
   .friend-entry-panel,
   .friend-balance-summary {
     grid-template-columns: 1fr;
@@ -1280,6 +1403,9 @@
   .row-card {
     grid-template-columns: 1fr;
     align-items: flex-start;
+  }
+  .grid-3 {
+    grid-template-columns: 1fr;
   }
   .section-heading {
     flex-direction: column;
@@ -1326,5 +1452,164 @@
   }
   .line-chart svg {
     height: 150px;
+  }
+  /* Tab responsiveness */
+  .tab-control {
+    overflow-x: auto;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-control::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-button {
+    padding: 10px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    touch-action: manipulation;
+  }
+  .tab-button.tab-active {
+    border-bottom: 2px solid var(--accent);
+    margin-bottom: 0;
+    padding-bottom: 8px;
+  }
+  .friend-detail-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .friend-detail-actions .button {
+    padding: 7px 10px;
+    font-size: 12px;
+    min-width: 0;
+    flex: 1 1 calc(50% - 3px);
+  }
+  /* Mobile reminder row: show all info in accessible layout */
+  .reminder-row {
+    grid-template-columns: 1fr !important;
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .reminder-row > div:first-child {
+    flex: 1;
+  }
+  .reminder-row > div:nth-child(2) {
+    display: block !important;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .reminder-row > div:nth-child(3) {
+    display: flex !important;
+    width: fit-content;
+  }
+  .reminder-row > a {
+    display: block !important;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 12px;
+    text-align: center;
+  }
+}
+
+/* Extra small devices (< 600px) - enhanced mobile responsiveness */
+@media (max-width: 600px) {
+  .layout-shell {
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+  .main-content {
+    padding: 12px;
+  }
+  .dashboard-shell {
+    gap: 10px;
+  }
+  .section-card {
+    border-radius: 10px;
+    padding: 12px;
+  }
+  
+  /* Better grid responsiveness */
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  /* Summary cards stack better */
+  .summary-card {
+    padding: 10px 12px;
+  }
+  .summary-card .card-title {
+    font-size: 12px;
+  }
+  
+  /* Row cards become full-width stacked */
+  .row-card,
+  .simple-row,
+  .detail-row,
+  .activity-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+    padding: 10px;
+  }
+  
+  .row-card:nth-child(2),
+  .row-card:nth-child(3),
+  .row-card:nth-child(4),
+  .row-card:nth-child(5) {
+    display: none;
+  }
+  
+  /* Header adjustment */
+  .section-heading {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .friend-detail-header {
+    flex-direction: column !important;
+  }
+  
+  .friend-detail-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+  
+  .friend-detail-actions .button {
+    flex: 1 1 calc(50% - 3px);
+    min-width: 60px;
+  }
+  
+  /* List density for small screens */
+  .list {
+    gap: 6px;
+  }
+  
+  /* Pill styling for small screens */
+  .pill {
+    padding: 4px 8px;
+    font-size: 11px;
+    margin-left: auto;
+  }
+  
+  /* Better touch targets for buttons */
+  .button,
+  .tab-button {
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  
+  /* Reminder row compact on very small */
+  .reminder-row > a {
+    padding: 10px 8px;
+    font-size: 11px;
   }
 }
