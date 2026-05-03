@@ -1,4 +1,7 @@
-from django.test import TestCase
+import re
+
+from django.core import mail
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import BusinessKYC, BusinessPayment, BusinessProfile, User
@@ -111,3 +114,145 @@ class BusinessProfileLifecycleTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["payment_status"], "approved")
         self.assertEqual(payload["kyc_status"], self.business_user.kyc_status)
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    OTP_RESEND_COOLDOWN_SECONDS=60,
+)
+class TwoFactorAuthTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email="private@example.com",
+            full_name="Private User",
+            account_type="PRIVATE",
+            password="pass12345",
+        )
+
+    def test_login_without_2fa_returns_tokens(self):
+        response = self.client.post(
+            "/api/auth/login/",
+            {"email": "private@example.com", "password": "pass12345"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("access", payload)
+        self.assertIn("refresh", payload)
+        self.assertNotIn("two_factor_required", payload)
+
+    def test_login_with_2fa_sends_otp_without_tokens_then_verify_returns_tokens(self):
+        self.user.two_factor_enabled = True
+        self.user.save(update_fields=["two_factor_enabled"])
+
+        login_response = self.client.post(
+            "/api/auth/login/",
+            {"email": "private@example.com", "password": "pass12345"},
+            format="json",
+        )
+
+        self.assertEqual(login_response.status_code, 200)
+        login_payload = login_response.json()
+        self.assertTrue(login_payload["two_factor_required"])
+        self.assertEqual(login_payload["email"], "private@example.com")
+        self.assertNotIn("access", login_payload)
+        self.assertEqual(len(mail.outbox), 1)
+
+        code = re.search(r"\b\d{6}\b", mail.outbox[0].body).group(0)
+        verify_response = self.client.post(
+            "/api/auth/2fa/verify/",
+            {"email": "private@example.com", "otp": code},
+            format="json",
+        )
+
+        self.assertEqual(verify_response.status_code, 200)
+        verify_payload = verify_response.json()
+        self.assertIn("access", verify_payload)
+        self.assertIn("refresh", verify_payload)
+        self.assertTrue(verify_payload["user"]["two_factor_enabled"])
+
+    def test_resend_respects_cooldown(self):
+        self.user.two_factor_enabled = True
+        self.user.save(update_fields=["two_factor_enabled"])
+
+        self.client.post(
+            "/api/auth/login/",
+            {"email": "private@example.com", "password": "pass12345"},
+            format="json",
+        )
+        response = self.client.post(
+            "/api/auth/2fa/resend/",
+            {"email": "private@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("retry_after", response.json())
+
+    def test_authenticated_user_can_toggle_2fa(self):
+        self.client.force_authenticate(self.user)
+
+        response = self.client.patch(
+            "/api/auth/2fa/toggle/",
+            {"enabled": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.two_factor_enabled)
+
+    def test_forgot_password_otp_verification_and_reset_updates_password(self):
+        request_response = self.client.post(
+            "/api/auth/password/forgot/",
+            {"email": "private@example.com"},
+            format="json",
+        )
+        self.assertEqual(request_response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+
+        code = re.search(r"\b\d{6}\b", mail.outbox[0].body).group(0)
+        verify_response = self.client.post(
+            "/api/auth/password/verify-otp/",
+            {"email": "private@example.com", "otp": code},
+            format="json",
+        )
+        self.assertEqual(verify_response.status_code, 200)
+        reset_token = verify_response.json()["reset_token"]
+
+        reset_response = self.client.post(
+            "/api/auth/password/reset/",
+            {
+                "email": "private@example.com",
+                "reset_token": reset_token,
+                "new_password": "newpass12345",
+            },
+            format="json",
+        )
+        self.assertEqual(reset_response.status_code, 200)
+
+        login_response = self.client.post(
+            "/api/auth/login/",
+            {"email": "private@example.com", "password": "newpass12345"},
+            format="json",
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.assertIn("access", login_response.json())
+
+    def test_password_reset_resend_respects_cooldown(self):
+        self.client.post(
+            "/api/auth/password/forgot/",
+            {"email": "private@example.com"},
+            format="json",
+        )
+
+        resend_response = self.client.post(
+            "/api/auth/password/resend/",
+            {"email": "private@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(resend_response.status_code, 429)
+        self.assertIn("retry_after", resend_response.json())

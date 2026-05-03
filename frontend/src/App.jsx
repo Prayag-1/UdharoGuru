@@ -1,10 +1,13 @@
 import { Navigate, Route, Routes, BrowserRouter } from "react-router-dom";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 import "./App.css";
 import { AuthProvider } from "./context/AuthContext";
+import { getGoogleClientId } from "./utils/googleAuth";
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
 import VerifyEmail from "./pages/auth/VerifyEmail";
+import ForgotPassword from "./pages/auth/ForgotPassword";
 import BusinessLayout from "./pages/business/BusinessLayout";
 import BusinessDashboard from "./pages/business/BusinessDashboard";
 import Payment from "./pages/business/Payment";
@@ -35,59 +38,64 @@ import GroupsView from "./pages/private/GroupsView";
 import PrivatePaymentRequest from "./pages/private/PrivatePaymentRequest";
 import AccountView from "./pages/private/AccountView";
 
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
+
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Navigate to="/auth/login" replace />} />
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Navigate to="/auth/login" replace />} />
 
-          <Route path="/auth/login" element={<Login />} />
-          <Route path="/auth/signup" element={<Signup />} />
-          <Route path="/auth/verify-email" element={<VerifyEmail />} />
+            <Route path="/auth/login" element={<Login />} />
+            <Route path="/auth/signup" element={<Signup />} />
+            <Route path="/auth/verify-email" element={<VerifyEmail />} />
+            <Route path="/auth/forgot-password" element={<ForgotPassword />} />
 
-          <Route path="/business/*" element={<BusinessLayout />}>
-            <Route path="dashboard" element={<BusinessDashboard />} />
-            <Route path="payment" element={<Payment />} />
-            <Route path="payment-request" element={<BusinessPaymentRequest />} />
-            <Route path="profile" element={<BusinessProfileSetup />} />
-            <Route path="customers" element={<CustomersPage />} />
-            <Route path="customers/:id" element={<CustomerProfile />} />
-            <Route path="products" element={<ProductsPage />} />
-            <Route path="credit-sales" element={<CreditSalesPage />} />
-            <Route path="credit-sales/create" element={<CreateCreditSale />} />
-            <Route path="credit-sales/:id" element={<CreditSaleDetail />} />
-            <Route path="income" element={<IncomePage />} />
-            <Route path="ocr/upload" element={<OCRUpload />} />
-            <Route path="payments" element={<PaymentsPage />} />
-            <Route path="kyc" element={<KycForm />} />
-            <Route path="kyc/review" element={<KycForm />} />
-            <Route path="pending" element={<PendingVerification />} />
-            <Route path="rejected" element={<Rejected />} />
-            <Route path="ocr" element={<OcrList />} />
-            <Route path="ocr/:id" element={<OcrDetail />} />
-            <Route path="*" element={<Navigate to="/business/dashboard" replace />} />
-          </Route>
+            <Route path="/business/*" element={<BusinessLayout />}>
+              <Route path="dashboard" element={<BusinessDashboard />} />
+              <Route path="payment" element={<Payment />} />
+              <Route path="payment-request" element={<BusinessPaymentRequest />} />
+              <Route path="profile" element={<BusinessProfileSetup />} />
+              <Route path="customers" element={<CustomersPage />} />
+              <Route path="customers/:id" element={<CustomerProfile />} />
+              <Route path="products" element={<ProductsPage />} />
+              <Route path="credit-sales" element={<CreditSalesPage />} />
+              <Route path="credit-sales/create" element={<CreateCreditSale />} />
+              <Route path="credit-sales/:id" element={<CreditSaleDetail />} />
+              <Route path="income" element={<IncomePage />} />
+              <Route path="ocr/upload" element={<OCRUpload />} />
+              <Route path="payments" element={<PaymentsPage />} />
+              <Route path="kyc" element={<KycForm />} />
+              <Route path="kyc/review" element={<KycForm />} />
+              <Route path="pending" element={<PendingVerification />} />
+              <Route path="rejected" element={<Rejected />} />
+              <Route path="ocr" element={<OcrList />} />
+              <Route path="ocr/:id" element={<OcrDetail />} />
+              <Route path="*" element={<Navigate to="/business/dashboard" replace />} />
+            </Route>
 
-          <Route path="/payment-success" element={<PaymentSuccess />} />
-          <Route path="/payment-cancel" element={<PaymentCancel />} />
+            <Route path="/payment-success" element={<PaymentSuccess />} />
+            <Route path="/payment-cancel" element={<PaymentCancel />} />
 
-          <Route path="/private" element={<Navigate to="/private/friends" replace />} />
-          <Route path="/private/*" element={<PrivateLayout />}>
-            <Route path="dashboard" element={<DashboardView />} />
-            <Route path="payment-request" element={<PrivatePaymentRequest />} />
-            <Route path="friends" element={<FriendsView />} />
-            <Route path="friends/:id" element={<FriendDetailView />} />
-            <Route path="groups" element={<GroupsView />} />
-            <Route path="activity" element={<ActivityView />} />
-            <Route path="account" element={<AccountView />} />
-            <Route path="*" element={<Navigate to="/private/friends" replace />} />
-          </Route>
+            <Route path="/private" element={<Navigate to="/private/friends" replace />} />
+            <Route path="/private/*" element={<PrivateLayout />}>
+              <Route path="dashboard" element={<DashboardView />} />
+              <Route path="payment-request" element={<PrivatePaymentRequest />} />
+              <Route path="friends" element={<FriendsView />} />
+              <Route path="friends/:id" element={<FriendDetailView />} />
+              <Route path="groups" element={<GroupsView />} />
+              <Route path="activity" element={<ActivityView />} />
+              <Route path="account" element={<AccountView />} />
+              <Route path="*" element={<Navigate to="/private/friends" replace />} />
+            </Route>
 
-          <Route path="*" element={<Navigate to="/auth/login" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            <Route path="*" element={<Navigate to="/auth/login" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </GoogleOAuthProvider>
   );
 }
 

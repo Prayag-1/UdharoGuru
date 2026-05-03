@@ -7,7 +7,7 @@ from django.db.models import QuerySet
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import BusinessKYC, BusinessPayment, BusinessProfile
+from .models import BusinessKYC, BusinessPayment, BusinessProfile, TwoFactorOTP
 
 User = get_user_model()
 
@@ -56,6 +56,15 @@ class BusinessPaymentAdmin(admin.ModelAdmin):
         updated += 1
     self.message_user(request, f"Marked {updated} payment(s) as verified.")
   mark_payment_verified.short_description = "Mark Payment Verified"
+
+
+@admin.register(TwoFactorOTP)
+class TwoFactorOTPAdmin(admin.ModelAdmin):
+  list_display = ("user", "created_at", "expires_at", "used_at", "attempt_count", "last_sent_at")
+  list_filter = ("used_at", "created_at", "expires_at")
+  search_fields = ("user__email",)
+  readonly_fields = ("user", "otp_hash", "created_at", "expires_at", "used_at", "attempt_count", "last_sent_at")
+  ordering = ("-created_at",)
 
 
 @admin.register(BusinessKYC)

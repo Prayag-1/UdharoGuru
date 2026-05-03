@@ -175,19 +175,28 @@ SIMPLE_JWT = {
 }
 
 # Email / OTP
-# EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-# EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-# EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
-# EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-# EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'nepalprayag880@gmail.com')
-# # App password provided for OTP emailing; override via env in production if needed.
-# EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'rfqjslapmalsoecs')
-# DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Udharo Guru <nepalprayag880@gmail.com>')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.smtp.EmailBackend'
+    if EMAIL_HOST and EMAIL_HOST_USER and EMAIL_HOST_PASSWORD
+    else 'django.core.mail.backends.console.EmailBackend',
+)
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Udharo Guru <no-reply@localhost>')
+if EMAIL_HOST_USER and ('your-email' in DEFAULT_FROM_EMAIL or 'your_email' in DEFAULT_FROM_EMAIL):
+    DEFAULT_FROM_EMAIL = f'Udharo Guru <{EMAIL_HOST_USER}>'
 
-# OTP_EXPIRY_MINUTES = int(os.getenv('OTP_EXPIRY_MINUTES', '10'))
-# OTP_MAX_ATTEMPTS = int(os.getenv('OTP_MAX_ATTEMPTS', '5'))
+OTP_EXPIRY_MINUTES = int(os.getenv('OTP_EXPIRY_MINUTES', '10'))
+OTP_MAX_ATTEMPTS = int(os.getenv('OTP_MAX_ATTEMPTS', '5'))
+OTP_RESEND_COOLDOWN_SECONDS = int(os.getenv('OTP_RESEND_COOLDOWN_SECONDS', '60'))
 
 # Google OAuth removed for now to simplify authentication flow; can be re-added later if needed.
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
 
 # Stripe Configuration
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', 'sk_test_your_secret_key_here')

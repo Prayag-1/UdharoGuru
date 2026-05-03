@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
 import { formatDateTime } from "./privateShared";
+import { toggleTwoFactor, updatePhone } from "../../api/auth";
 import "./PrivateDashboard.css";
 
 export default function AccountView() {
@@ -17,7 +18,65 @@ export default function AccountView() {
     toggleTheme,
   } = useOutletContext();
 
+  const [phoneEdit, setPhoneEdit] = useState(false);
+  const [phoneValue, setPhoneValue] = useState(user?.phone_number || "");
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneSuccess, setPhoneSuccess] = useState("");
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(Boolean(user?.two_factor_enabled));
+  const [twoFactorSaving, setTwoFactorSaving] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState("");
+  const [twoFactorSuccess, setTwoFactorSuccess] = useState("");
+
   const recentNotifications = useMemo(() => notifications.slice(0, 5), [notifications]);
+
+  const handlePhoneSave = async () => {
+    setPhoneError("");
+    setPhoneSuccess("");
+    
+    if (!phoneValue.trim()) {
+      setPhoneError("Phone number cannot be empty.");
+      return;
+    }
+    
+    setPhoneSaving(true);
+    try {
+      await updatePhone(phoneValue.trim());
+      setPhoneSuccess("Phone number updated successfully.");
+      setPhoneEdit(false);
+      setTimeout(() => setPhoneSuccess(""), 3000);
+    } catch (err) {
+      setPhoneError(err.message || "Failed to update phone number.");
+    } finally {
+      setPhoneSaving(false);
+    }
+  };
+
+  const handlePhoneCancel = () => {
+    setPhoneValue(user?.phone_number || "");
+    setPhoneEdit(false);
+    setPhoneError("");
+    setPhoneSuccess("");
+  };
+
+  const handleTwoFactorToggle = async () => {
+    const nextValue = !twoFactorEnabled;
+    setTwoFactorSaving(true);
+    setTwoFactorError("");
+    setTwoFactorSuccess("");
+    try {
+      const { data } = await toggleTwoFactor(nextValue);
+      setTwoFactorEnabled(Boolean(data?.two_factor_enabled));
+      setTwoFactorSuccess(
+        data?.two_factor_enabled ? "Email OTP 2FA enabled." : "Email OTP 2FA disabled."
+      );
+      setTimeout(() => setTwoFactorSuccess(""), 3000);
+    } catch (err) {
+      setTwoFactorError(err?.response?.data?.detail || "Failed to update 2FA setting.");
+    } finally {
+      setTwoFactorSaving(false);
+    }
+  };
 
   return (
     <div className="dashboard-shell">
@@ -55,15 +114,100 @@ export default function AccountView() {
             <div className="card-title">Connected status</div>
             <div className="account-field">
               <span>Google sign-in</span>
-              <strong>Not exposed in current account payload</strong>
+              <strong>{user?.google_linked ? "Connected ✓" : "Not connected"}</strong>
             </div>
             <div className="account-field">
-              <span>Phone</span>
-              <strong>Not available for private profile yet</strong>
+              <span>Phone number</span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
+                <strong>
+                  {phoneEdit ? (
+                    <input
+                      type="tel"
+                      value={phoneValue}
+                      onChange={(e) => setPhoneValue(e.target.value)}
+                      placeholder="+977 98..."
+                      style={{
+                        padding: "6px 8px",
+                        borderRadius: "4px",
+                        border: "1px solid #ddd",
+                        fontSize: "14px",
+                      }}
+                    />
+                  ) : (
+                    user?.phone_number || "Not set"
+                  )}
+                </strong>
+                {phoneEdit ? (
+                  <>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={handlePhoneSave}
+                      disabled={phoneSaving}
+                      style={{ padding: "4px 12px", fontSize: "12px" }}
+                    >
+                      {phoneSaving ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={handlePhoneCancel}
+                      disabled={phoneSaving}
+                      style={{ padding: "4px 12px", fontSize: "12px" }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="button secondary"
+                    type="button"
+                    onClick={() => setPhoneEdit(true)}
+                    style={{ padding: "4px 12px", fontSize: "12px" }}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+              {phoneError && (
+                <div style={{ color: "#d32f2f", fontSize: "12px", marginTop: "4px" }}>
+                  {phoneError}
+                </div>
+              )}
+              {phoneSuccess && (
+                <div style={{ color: "#388e3c", fontSize: "12px", marginTop: "4px" }}>
+                  {phoneSuccess}
+                </div>
+              )}
             </div>
             <div className="account-field">
               <span>Notifications</span>
               <strong>{unreadCount} unread</strong>
+            </div>
+            <div className="account-field">
+              <span>Email OTP 2FA</span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
+                <strong>{twoFactorEnabled ? "Enabled" : "Disabled"}</strong>
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={handleTwoFactorToggle}
+                  disabled={twoFactorSaving}
+                  style={{ padding: "4px 12px", fontSize: "12px" }}
+                >
+                  {twoFactorSaving ? "Saving..." : twoFactorEnabled ? "Disable" : "Enable"}
+                </button>
+              </div>
+              {twoFactorError && (
+                <div style={{ color: "#d32f2f", fontSize: "12px", marginTop: "4px" }}>
+                  {twoFactorError}
+                </div>
+              )}
+              {twoFactorSuccess && (
+                <div style={{ color: "#388e3c", fontSize: "12px", marginTop: "4px" }}>
+                  {twoFactorSuccess}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -145,8 +289,8 @@ export default function AccountView() {
             <div className="summary-card">
               <div className="card-title">Security</div>
               <div className="muted" style={{ fontSize: 13 }}>
-                Authentication still runs through the existing auth flow. Profile editing and linked-account management
-                need dedicated account APIs before they can be safely added here.
+                Authentication runs through the existing auth flow. Phone numbers can now be updated here and used for
+                WhatsApp reminders. Google account linking is also supported.
               </div>
             </div>
           </div>

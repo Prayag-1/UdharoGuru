@@ -29,6 +29,7 @@ import {
   getConnectionTransactionMap,
   normalizeConnection,
 } from "./privateShared";
+import { sendDebtReminder, sendItemReminder } from "../../utils/whatsapp";
 import "./PrivateDashboard.css";
 
 /**
@@ -519,19 +520,36 @@ export default function FriendDetailView() {
                     Remind every {item.reminder_interval_days}d
                   </div>
                   <div className={`reminder-badge ${badge.className}`}>{badge.label}</div>
-                  <a
-                    className="button secondary sm"
-                    href={buildGmailLink({
-                      to: item.borrower_email,
-                      subject: `Return reminder for ${item.item_name}`,
-                      body: `Hello,\n\nThis is a reminder to return ${item.item_name}.\n\nThanks.`,
-                    })}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Send return reminder via Gmail"
-                  >
-                    Send
-                  </a>
+                  <div style={{ display: "flex", gap: "4px" }}>
+                    <a
+                      className="button secondary sm"
+                      href={buildGmailLink({
+                        to: item.borrower_email,
+                        subject: `Return reminder for ${item.item_name}`,
+                        body: `Hello,\n\nThis is a reminder to return ${item.item_name}.\n\nThanks.`,
+                      })}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Send return reminder via Gmail"
+                    >
+                      Send
+                    </a>
+                    <button
+                      className="button secondary sm"
+                      type="button"
+                      disabled={!selectedFriend?.phone_number}
+                      onClick={() =>
+                        sendItemReminder({
+                          phoneNumber: selectedFriend.phone_number,
+                          friendName: friendName,
+                          itemName: item.item_name,
+                        })
+                      }
+                      title="Send return reminder via WhatsApp"
+                    >
+                      WhatsApp
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -708,6 +726,24 @@ export default function FriendDetailView() {
             style={{ fontWeight: 600 }}
           >
             Send reminder
+          </button>
+          <button
+            className="button"
+            type="button"
+            disabled={!selectedFriend?.phone_number || friendBalance === 0}
+            onClick={() =>
+              sendDebtReminder({
+                phoneNumber: selectedFriend.phone_number,
+                friendName: friendName,
+                amount: Math.abs(friendBalance),
+                type: friendBalance > 0 ? "LENT" : "BORROWED",
+              })
+            }
+            aria-label={`Send WhatsApp reminder to ${friendName}`}
+            title="Send reminder via WhatsApp"
+            style={{ fontWeight: 600 }}
+          >
+            WhatsApp
           </button>
           <button
             className="button"

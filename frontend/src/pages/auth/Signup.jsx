@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { GoogleLogin } from "@react-oauth/google";
 
 import "./Signup.css";
 import { resolveHomeRoute, useAuth } from "../../context/AuthContext";
+import { authenticateWithGoogle, formatGoogleError } from "../../utils/googleAuth";
+import { setTokens } from "../../api/apiClient";
 
 const features = [
   {
@@ -38,23 +41,59 @@ export default function Signup() {
     account_type: "PRIVATE",
   });
   const [error, setError] = useState("");
+  const [googleError, setGoogleError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, setUserState } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      const profile = await register(form);
-      navigate(resolveHomeRoute(profile), { replace: true });
+      const result = await register(form);
+      if (result?.email_verification_required) {
+        // Navigate to email verification screen
+        navigate("/auth/verify-email", {
+          replace: true,
+          state: {
+            email: result.email,
+            message: result.message,
+          },
+        });
+      } else {
+        // Registration complete, navigate to dashboard
+        navigate(resolveHomeRoute(result), { replace: true });
+      }
     } catch (err) {
       setError(err.message || "Signup failed. Please check your details and try again.");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setError("");
+    setGoogleError("");
+    setSubmitting(true);
+    try {
+      const response = await authenticateWithGoogle(
+        credentialResponse.credential,
+        form.account_type
+      );
+      setTokens(response.access, response.refresh);
+      setUserState(response.user);
+      navigate(resolveHomeRoute(response.user), { replace: true });
+    } catch (err) {
+      setGoogleError(formatGoogleError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setGoogleError("Google sign-up failed. Please try again.");
   };
 
   const accountTab = (active) => `tab-toggle ${active ? "tab-active" : ""}`;
@@ -132,6 +171,7 @@ export default function Signup() {
                 value={form.full_name}
                 onChange={(e) => setForm({ ...form, full_name: e.target.value })}
                 placeholder="Enter your full name"
+                disabled={submitting}
                 required
               />
             </label>
@@ -143,6 +183,7 @@ export default function Signup() {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="you@business.com"
+                disabled={submitting}
                 required
               />
             </label>
@@ -154,6 +195,7 @@ export default function Signup() {
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder="Enter a strong password"
+                disabled={submitting}
                 required
               />
             </label>
@@ -172,12 +214,57 @@ export default function Signup() {
               </Link>
             </div>
 
-            <button className="primary-btn" type="submit" disabled={submitting}>
+            <button
+              className="primary-btn"
+              type="submit"
+              disabled={submitting}
+              style={{
+                background: submitting ? "#9ca3af" : undefined,
+              }}
+            >
               {submitting ? "Creating account..." : "Sign up"}
             </button>
 
             {error && <div className="form-error">{error}</div>}
           </form>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              margin: "16px 0",
+            }}
+          >
+            <div style={{ flex: 1, height: "1px", background: "#e5e7eb" }} />
+            <span style={{ color: "#9ca3af", fontSize: "13px" }}>OR</span>
+            <div style={{ flex: 1, height: "1px", background: "#e5e7eb" }} />
+          </div>
+
+          <div style={{ marginBottom: "16px" }}>
+            {googleError && (
+              <div
+                style={{
+                  padding: "12px",
+                  marginBottom: "12px",
+                  background: "#fee2e2",
+                  color: "#991b1b",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                }}
+              >
+                {googleError}
+              </div>
+            )}
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              text="signup_with"
+              theme="light"
+              locale="en"
+              useOneTap={false}
+            />
+          </div>
 
           <p className="switch-auth">
             Already have an account?{" "}

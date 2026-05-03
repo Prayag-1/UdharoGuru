@@ -5,6 +5,7 @@ from rest_framework.exceptions import APIException
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import BusinessKYC, BusinessPayment, BusinessProfile, User, ensure_business_profile
+from .services.otp_service import create_and_send_otp
 
 
 class ConflictError(APIException):
@@ -69,8 +70,18 @@ class MeSerializer(serializers.ModelSerializer):
             "kyc_status",
             "business_status",
             "invite_code",
+            "phone_number",
+            "google_linked",
+            "two_factor_enabled",
         )
-        read_only_fields = fields
+        read_only_fields = (
+            "id",
+            "kyc_status",
+            "business_status",
+            "invite_code",
+            "google_linked",
+            "two_factor_enabled",
+        )
 
 
 class SimpleTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -96,11 +107,72 @@ class SimpleTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise serializers.ValidationError({"detail": "Invalid credentials."})
 
         self.user = user
+        if getattr(user, "two_factor_enabled", False):
+            create_and_send_otp(user=user, purpose='LOGIN_2FA')
+            return {
+                "two_factor_required": True,
+                "email": user.email,
+                "message": "OTP sent to your email.",
+            }
+
         refresh = self.get_token(user)
         return {
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         }
+
+
+class TwoFactorVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6, trim_whitespace=True)
+
+
+class TwoFactorResendSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class TwoFactorToggleSerializer(serializers.Serializer):
+    enabled = serializers.BooleanField()
+
+
+class ForgotPasswordRequestSerializer(serializers.Serializer):
+    """Request password reset OTP for forgot password flow."""
+    email = serializers.EmailField()
+
+
+class PasswordResetVerifySerializer(serializers.Serializer):
+    """Verify OTP during password reset."""
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6, trim_whitespace=True)
+
+
+class PasswordResetResendSerializer(serializers.Serializer):
+    """Resend OTP during password reset."""
+    email = serializers.EmailField()
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    """Reset password after OTP verification."""
+    email = serializers.EmailField()
+    reset_token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_new_password(self, value):
+        # Basic password validation
+        if not value:
+            raise serializers.ValidationError("Password cannot be empty.")
+        return value
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    """Verify email OTP during signup or email verification flow."""
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6, trim_whitespace=True)
+
+
+class EmailVerificationResendSerializer(serializers.Serializer):
+    """Resend email verification OTP."""
+    email = serializers.EmailField()
 
 
 class BusinessPaymentSerializer(serializers.ModelSerializer):

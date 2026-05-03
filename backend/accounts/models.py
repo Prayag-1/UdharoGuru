@@ -83,7 +83,33 @@ class User(AbstractBaseUser, PermissionsMixin):
         editable=False,
         db_index=True,
     )
-    is_email_verified = models.BooleanField(default=True)
+    is_email_verified = models.BooleanField(default=False)
+    
+    # Phone and OAuth fields
+    phone_number = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        help_text="Phone number with country code (e.g., 97798XXXXXXXX)"
+    )
+    google_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        unique=True,
+        db_index=True,
+        help_text="Google OAuth unique identifier"
+    )
+    google_linked = models.BooleanField(
+        default=False,
+        help_text="Whether account is linked to Google"
+    )
+    
+    # Two-Factor Authentication
+    two_factor_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether 2FA is enabled for this user"
+    )
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -107,6 +133,47 @@ class User(AbstractBaseUser, PermissionsMixin):
             # Keep invite_code unset for non-private accounts.
             self.invite_code = None
         super().save(*args, **kwargs)
+
+
+class TwoFactorOTP(models.Model):
+    PURPOSE_CHOICES = (
+        ('LOGIN_2FA', 'Login 2FA'),
+        ('PASSWORD_RESET', 'Password Reset'),
+        ('EMAIL_VERIFICATION', 'Email Verification'),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="two_factor_otps",
+        null=True,
+        blank=True,
+    )
+    email = models.EmailField(null=True, blank=True)
+    purpose = models.CharField(
+        max_length=20,
+        choices=PURPOSE_CHOICES,
+        default='LOGIN_2FA',
+        db_index=True,
+    )
+    otp_hash = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["expires_at"]),
+            models.Index(fields=["email", "purpose"]),
+        ]
+
+    def __str__(self):
+        identifier = self.user.email if self.user else self.email
+        return f"OTP ({self.purpose}) for {identifier} at {self.created_at:%Y-%m-%d %H:%M:%S}"
 
 
 class BusinessPayment(models.Model):

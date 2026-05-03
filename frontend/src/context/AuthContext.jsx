@@ -1,7 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from "react";
 
 import { clearTokens, setTokens } from "../api/apiClient";
-import { getMe, login as loginApi, register as registerApi } from "../api/auth";
+import {
+  getMe,
+  login as loginApi,
+  register as registerApi,
+  verifyTwoFactor as verifyTwoFactorApi,
+  verifyEmail as verifyEmailApi,
+  resendEmailVerification as resendEmailVerificationApi,
+  forgotPasswordRequest as forgotPasswordRequestApi,
+  verifyPasswordResetOTP as verifyPasswordResetOTPApi,
+  resendPasswordResetOTP as resendPasswordResetOTPApi,
+  resetPassword as resetPasswordApi,
+} from "../api/auth";
 
 const AuthContext = createContext(null);
 
@@ -103,11 +114,31 @@ export function AuthProvider({ children }) {
     async ({ email, password }) => {
       try {
         const { data } = await loginApi({ email, password });
+        if (data?.two_factor_required) {
+          return data;
+        }
         setTokens(data.access, data.refresh);
         const profile = await loadUser();
         return profile;
       } catch (err) {
         throw buildError(err, "Unable to login.");
+      }
+    },
+    [loadUser]
+  );
+
+  const verifyTwoFactor = useCallback(
+    async ({ email, otp }) => {
+      try {
+        const { data } = await verifyTwoFactorApi({ email, otp });
+        setTokens(data.access, data.refresh);
+        if (data.user) {
+          setUser(data.user);
+          return data.user;
+        }
+        return loadUser();
+      } catch (err) {
+        throw buildError(err, "Unable to verify OTP.");
       }
     },
     [loadUser]
@@ -122,6 +153,11 @@ export function AuthProvider({ children }) {
           full_name,
           account_type: (account_type || "").toUpperCase(),
         });
+        // If email verification is required, return that response
+        if (data?.email_verification_required) {
+          return data;
+        }
+        // Otherwise, set tokens and load user (legacy path)
         if (data?.access && data?.refresh) {
           setTokens(data.access, data.refresh);
           const profile = await loadUser();
@@ -133,6 +169,83 @@ export function AuthProvider({ children }) {
       }
     },
     [loadUser]
+  );
+
+  const verifyEmail = useCallback(
+    async ({ email, otp }) => {
+      try {
+        const { data } = await verifyEmailApi({ email, otp });
+        setTokens(data.access, data.refresh);
+        if (data.user) {
+          setUser(data.user);
+          return data.user;
+        }
+        return loadUser();
+      } catch (err) {
+        throw buildError(err, "Unable to verify email.");
+      }
+    },
+    [loadUser]
+  );
+
+  const resendEmailVerification = useCallback(
+    async (email) => {
+      try {
+        const { data } = await resendEmailVerificationApi(email);
+        return data;
+      } catch (err) {
+        throw buildError(err, "Unable to resend verification code.");
+      }
+    },
+    []
+  );
+
+  const forgotPassword = useCallback(
+    async (email) => {
+      try {
+        const { data } = await forgotPasswordRequestApi(email);
+        return data;
+      } catch (err) {
+        throw buildError(err, "Unable to request password reset.");
+      }
+    },
+    []
+  );
+
+  const verifyPasswordResetOTP = useCallback(
+    async ({ email, otp }) => {
+      try {
+        const { data } = await verifyPasswordResetOTPApi({ email, otp });
+        return data;
+      } catch (err) {
+        throw buildError(err, "Unable to verify OTP.");
+      }
+    },
+    []
+  );
+
+  const resendPasswordResetOTP = useCallback(
+    async (email) => {
+      try {
+        const { data } = await resendPasswordResetOTPApi(email);
+        return data;
+      } catch (err) {
+        throw buildError(err, "Unable to resend password reset code.");
+      }
+    },
+    []
+  );
+
+  const resetPassword = useCallback(
+    async ({ email, reset_token, new_password }) => {
+      try {
+        const { data } = await resetPasswordApi({ email, reset_token, new_password });
+        return data;
+      } catch (err) {
+        throw buildError(err, "Unable to reset password.");
+      }
+    },
+    []
   );
 
   const logout = useCallback(() => {
@@ -150,7 +263,14 @@ export function AuthProvider({ children }) {
       user,
       loading,
       login,
+      verifyTwoFactor,
       register,
+      verifyEmail,
+      resendEmailVerification,
+      forgotPassword,
+      verifyPasswordResetOTP,
+      resendPasswordResetOTP,
+      resetPassword,
       logout,
       refreshUser: loadUser,
       setUserState,
@@ -159,7 +279,14 @@ export function AuthProvider({ children }) {
       user,
       loading,
       login,
+      verifyTwoFactor,
       register,
+      verifyEmail,
+      resendEmailVerification,
+      forgotPassword,
+      verifyPasswordResetOTP,
+      resendPasswordResetOTP,
+      resetPassword,
       logout,
       loadUser,
       setUserState,

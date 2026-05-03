@@ -1,19 +1,36 @@
 from rest_framework import status
+from django.conf import settings
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import BusinessKYC, BusinessPayment, ensure_business_profile
+from .models import BusinessKYC, BusinessPayment, User, ensure_business_profile
 from .serializers import (
     BusinessKYCSerializer,
     BusinessPaymentSerializer,
     BusinessProfileSerializer,
+    EmailVerificationResendSerializer,
+    EmailVerificationSerializer,
+    ForgotPasswordRequestSerializer,
     MeSerializer,
+    PasswordResetResendSerializer,
+    PasswordResetSerializer,
+    PasswordResetVerifySerializer,
     RegisterSerializer,
     SimpleTokenObtainPairSerializer,
+    TwoFactorResendSerializer,
+    TwoFactorToggleSerializer,
+    TwoFactorVerifySerializer,
     UserSerializer,
+)
+from .services.otp_service import (
+    OTPCooldownError,
+    OTPError,
+    create_and_send_otp,
+    resend_otp,
+    verify_otp,
 )
 
 ALLOWED_BUSINESS_STATUSES = {"PAYMENT_PENDING", "KYC_PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED"}
@@ -81,13 +98,20 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        refresh = RefreshToken.for_user(user)
+        
+        # Send email verification OTP
+        try:
+            create_and_send_otp(user=user, purpose='EMAIL_VERIFICATION')
+        except Exception as e:
+            # Log but don't fail - user is created
+            import logging
+            logging.error(f"Failed to send email verification OTP for {user.email}: {str(e)}")
+        
         return Response(
             {
-                "message": "Registration successful.",
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-                "user": UserSerializer(user).data,
+                "email_verification_required": True,
+                "email": user.email,
+                "message": "Verification code sent to your email. Please verify to continue.",
             },
             status=status.HTTP_201_CREATED,
         )
@@ -105,6 +129,319 @@ class MeView(APIView):
         request.user.refresh_from_db()
         _sync_business_access_state(request.user)
         return Response(MeSerializer(request.user).data, status=status.HTTP_200_OK)
+
+
+class TwoFactorVerifyView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = TwoFactorVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        code = serializer.validated_data["otp"]
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user or not getattr(user, "two_factor_enabled", False):
+            return Response({"detail": "Invalid OTP request."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            verify_otp(code, user=user, purpose='LOGIN_2FA')
+        except OTPError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "message": "2FA verification successful.",
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": MeSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TwoFactorResendView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = TwoFactorResendSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user or not getattr(user, "two_factor_enabled", False):
+            return Response({"detail": "Invalid OTP request."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            resend_otp(user=user, purpose='LOGIN_2FA')
+        except OTPCooldownError as exc:
+            return Response(
+                {"detail": str(exc), "retry_after": exc.retry_after_seconds},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except OTPError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "message": "OTP sent to your email.",
+                "email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TwoFactorToggleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        serializer = TwoFactorToggleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        request.user.two_factor_enabled = serializer.validated_data["enabled"]
+        request.user.save(update_fields=["two_factor_enabled"])
+        return Response(
+            {
+                "message": "2FA setting updated.",
+                "two_factor_enabled": request.user.two_factor_enabled,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ForgotPasswordRequestView(APIView):
+    """Request password reset OTP."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+
+        # Always return generic message to not reveal user existence
+        generic_response = Response(
+            {
+                "message": "If an account exists with this email, a verification code has been sent."
+            },
+            status=status.HTTP_200_OK,
+        )
+
+        if not user:
+            return generic_response
+
+        try:
+            create_and_send_otp(user=user, purpose='PASSWORD_RESET')
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to send password reset OTP for {email}: {str(e)}")
+            return generic_response
+
+        return generic_response
+
+
+class PasswordResetVerifyView(APIView):
+    """Verify OTP during password reset flow."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        code = serializer.validated_data["otp"]
+
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user:
+            return Response(
+                {"detail": "Invalid OTP or email."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            verify_otp(code, user=user, purpose='PASSWORD_RESET')
+        except OTPError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate a short-lived reset token
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        reset_token = str(refresh.access_token)
+
+        return Response(
+            {
+                "message": "OTP verified. You can now reset your password.",
+                "reset_token": reset_token,
+                "email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetResendView(APIView):
+    """Resend password reset OTP."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetResendSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+
+        if not user:
+            return Response(
+                {"message": "If an account exists, a verification code has been sent."},
+                status=status.HTTP_200_OK,
+            )
+
+        try:
+            resend_otp(user=user, purpose='PASSWORD_RESET')
+        except OTPCooldownError as exc:
+            return Response(
+                {"detail": str(exc), "retry_after": exc.retry_after_seconds},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except OTPError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "message": "Password reset code sent to your email.",
+                "email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetView(APIView):
+    """Reset password after OTP verification."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        reset_token = serializer.validated_data["reset_token"]
+        new_password = serializer.validated_data["new_password"]
+
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user:
+            return Response(
+                {"detail": "Invalid reset request."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate reset token (it's a JWT access token)
+        try:
+            from rest_framework_simplejwt.tokens import TokenError
+            from rest_framework_simplejwt.authentication import JWTAuthentication
+            from rest_framework_simplejwt.models import TokenUser
+
+            jwt_auth = JWTAuthentication()
+            validated_token = jwt_auth.get_validated_token(reset_token)
+            token_user_id = validated_token.get('user_id')
+
+            if str(token_user_id) != str(user.id):
+                return Response(
+                    {"detail": "Invalid reset token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except (TokenError, Exception):
+            return Response(
+                {"detail": "Invalid or expired reset token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Update password
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        return Response(
+            {
+                "message": "Password reset successful. You can now log in with your new password.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class EmailVerificationView(APIView):
+    """Verify email OTP during signup."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = EmailVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        code = serializer.validated_data["otp"]
+
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            verify_otp(code, user=user, purpose='EMAIL_VERIFICATION')
+        except OTPError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Mark email as verified
+        user.is_email_verified = True
+        user.save(update_fields=["is_email_verified"])
+
+        # Return tokens so user can proceed
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "message": "Email verified successfully.",
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": MeSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class EmailVerificationResendView(APIView):
+    """Resend email verification OTP."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = EmailVerificationResendSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+
+        if not user:
+            return Response(
+                {"message": "If an account exists, a verification code has been sent."},
+                status=status.HTTP_200_OK,
+            )
+
+        try:
+            resend_otp(user=user, purpose='EMAIL_VERIFICATION')
+        except OTPCooldownError as exc:
+            return Response(
+                {"detail": str(exc), "retry_after": exc.retry_after_seconds},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except OTPError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                "message": "Verification code sent to your email.",
+                "email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class BusinessOnlyMixin:
@@ -234,3 +571,127 @@ class BusinessProfileView(BusinessOnlyMixin, APIView):
         serializer.is_valid(raise_exception=True)
         profile = serializer.save()
         return Response(BusinessProfileSerializer(profile).data, status=status.HTTP_200_OK)
+
+
+class GoogleAuthView(APIView):
+    """
+    Google OAuth login endpoint.
+    Expects token from Google OAuth flow on frontend.
+    Creates or links user account.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from django.contrib.auth import get_user_model
+        
+        google_token = request.data.get("token")
+        account_type = (request.data.get("account_type") or "PRIVATE").upper()
+        
+        if not google_token:
+            return Response(
+                {"detail": "Google token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if account_type not in ["PRIVATE", "BUSINESS"]:
+            account_type = "PRIVATE"
+
+        google_client_id = getattr(settings, "GOOGLE_CLIENT_ID", "")
+        if not google_client_id or google_client_id == "your_google_client_id":
+            return Response(
+                {"detail": "Google Client ID is not configured on the backend."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        
+        try:
+            from google.auth.transport import requests
+            from google.oauth2 import id_token
+            
+            idinfo = id_token.verify_oauth2_token(
+                google_token,
+                requests.Request(),
+                google_client_id,
+            )
+            
+            google_id = idinfo.get("sub")
+            email = idinfo.get("email")
+            full_name = idinfo.get("name", email.split("@")[0])
+            email_verified = idinfo.get("email_verified", False)
+            
+            if not google_id or not email or not email_verified:
+                return Response(
+                    {"detail": "Invalid Google token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            User = get_user_model()
+            
+            # Try to find existing user by google_id
+            user = User.objects.filter(google_id=google_id).first()
+            
+            if not user:
+                # Try to find by email
+                user = User.objects.filter(email__iexact=email).first()
+                if user:
+                    # Link existing user to Google
+                    user.google_id = google_id
+                    user.google_linked = True
+                    user.save(update_fields=["google_id", "google_linked"])
+                else:
+                    user = User.objects.create_user(
+                        email=email,
+                        full_name=full_name,
+                        account_type=account_type,
+                        password=None,  # No password for Google auth
+                    )
+                    user.google_id = google_id
+                    user.google_linked = True
+                    user.save(update_fields=["google_id", "google_linked"])
+            
+            # Generate tokens
+            refresh = RefreshToken.for_user(user)
+            return Response(
+                {
+                    "message": "Google login successful.",
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
+                    "user": MeSerializer(user).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        
+        except Exception as e:
+            return Response(
+                {"detail": f"Google authentication failed: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class PhoneUpdateView(APIView):
+    """Update phone number for authenticated user."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        phone_number = request.data.get("phone_number", "").strip()
+        
+        if not phone_number:
+            return Response(
+                {"detail": "Phone number is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        if len(phone_number) > 20:
+            return Response(
+                {"detail": "Phone number too long."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        request.user.phone_number = phone_number
+        request.user.save(update_fields=["phone_number"])
+        
+        return Response(
+            {
+                "message": "Phone number updated.",
+                "user": MeSerializer(request.user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
